@@ -1,14 +1,16 @@
 ﻿
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ArrowUp, Bell, BookOpen, BriefcaseBusiness, CalendarClock, Check, ChevronRight,
-  Clock3, MessageCircle, Plus, Send, ShieldCheck, Sparkles,
-  UserRound, X
+  ArrowRight, ArrowUp, Bell, BookOpen, BriefcaseBusiness, CalendarClock,
+  Check, ChevronRight, Clock3, Home, MessageCircle, Plus, Send,
+  ShieldCheck, Sparkles, Target, TrendingUp, UserRound, X
 } from 'lucide-react'
 import '@/styles/globals.css'
-import { api, ApiProfile, ApiReminder, ApiMaterial, isTelegramWebApp } from '@/shared/api'
+import {
+  api, ApiProfile, ApiReminder, ApiMaterial, isTelegramWebApp
+} from '@/shared/api'
 
-type Tab = 'chat' | 'reminders' | 'materials' | 'business'
+type Tab = 'home' | 'chat' | 'materials' | 'reminders' | 'business'
 type Material = ApiMaterial
 
 type Message = {
@@ -70,6 +72,31 @@ const initialProfile: BusinessProfile = {
   timezone: 'Europe/Moscow'
 }
 
+const businessTypeNames: Record<string, string> = {
+  retail: 'Розничная торговля',
+  online_store: 'Интернет-магазин',
+  services: 'Услуги',
+  cafe_restaurant: 'Кафе или ресторан',
+  production: 'Производство',
+  construction: 'Строительство и ремонт',
+  it: 'IT и цифровые продукты',
+  freelance: 'Самозанятость и фриланс',
+  other: 'Другое'
+}
+
+const stageNames: Record<string, string> = {
+  idea: 'Планирую открыть бизнес',
+  launch: 'Запускаю бизнес',
+  running: 'Уже веду бизнес',
+  growing: 'Развиваю бизнес'
+}
+
+const experienceNames: Record<string, string> = {
+  novice: 'Начинающий',
+  some: 'Есть некоторый опыт',
+  experienced: 'Опытный предприниматель'
+}
+
 function clock() {
   return new Intl.DateTimeFormat('ru-RU', {
     hour: '2-digit',
@@ -113,7 +140,7 @@ function normalizeReminders(value: unknown): Reminder[] {
 }
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>('chat')
+  const [tab, setTab] = useState<Tab>('home')
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [input, setInput] = useState('')
   const [profile, setProfile] = useState<BusinessProfile>(initialProfile)
@@ -131,18 +158,6 @@ export default function App() {
   const [materials, setMaterials] = useState<Material[]>([])
   const [materialQuery, setMaterialQuery] = useState('')
 
-  const profileReady = useMemo(
-    () => Boolean(
-      profile.businessType ||
-      profile.stage ||
-      profile.sphere ||
-      profile.experience ||
-      profile.tax ||
-      profile.goal
-    ),
-    [profile]
-  )
-
   const profileFilledCount = [
     profile.businessType,
     profile.stage,
@@ -151,6 +166,10 @@ export default function App() {
     profile.tax,
     profile.goal
   ].filter(Boolean).length
+
+  const profileReady = profileFilledCount > 0
+
+  const profilePercent = Math.round(profileFilledCount / 6 * 100)
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -345,7 +364,6 @@ export default function App() {
       })
 
       await refreshReminders()
-
       setReminderTitle('')
       setReminderDate('')
       setReminderRepeat('Не повторять')
@@ -425,6 +443,11 @@ export default function App() {
     }
   }
 
+  function openChatWithQuestion(question: string) {
+    setTab('chat')
+    void sendMessage(question)
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -440,6 +463,139 @@ export default function App() {
       </header>
 
       <main className="main-content">
+
+        {tab === 'home' && (
+          <section className="home-page">
+            <div className="home-greeting">
+              <div>
+                <div className="eyebrow">ВАШ БИЗНЕС · ВАШ РОСТ</div>
+                <h1>Добро пожаловать в Skilly</h1>
+                <p>Ваш помощник в развитии бизнеса и обучении на каждом этапе.</p>
+              </div>
+              <div className="home-avatar"><Sparkles size={27} /></div>
+            </div>
+
+            <div className="home-hero">
+              <div className="home-hero-label">
+                <Sparkles size={15} /> ПЕРСОНАЛЬНЫЙ ИИ-ПОМОЩНИК
+              </div>
+              <h2>Развивайте бизнес. Мы поможем сориентироваться.</h2>
+              <p>
+                Получайте ответы на вопросы, находите полезные материалы
+                «Альфа-Курса» и планируйте важные задачи в одном месте.
+              </p>
+              <button className="home-hero-button" onClick={() => setTab('chat')}>
+                Задать вопрос <ArrowRight size={16} />
+              </button>
+            </div>
+
+            <div className="home-section-heading">
+              <div>
+                <div className="eyebrow">ВАШ ПРОФИЛЬ</div>
+                <h2>Движение к цели</h2>
+              </div>
+              <button onClick={() => setTab('business')}>
+                Изменить <ChevronRight size={15} />
+              </button>
+            </div>
+
+            <div className="home-profile-card">
+              <div className="home-profile-top">
+                <div className="home-profile-icon"><Target size={22} /></div>
+                <div>
+                  <b>{profile.goal || 'Определите главную цель бизнеса'}</b>
+                  <span>
+                    {profileReady
+                      ? 'Skilly сможет точнее учитывать ваш контекст'
+                      : 'Заполните профиль, чтобы получать персональные рекомендации'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="home-profile-progress">
+                <div className="home-progress-label">
+                  <span>Заполнение профиля</span>
+                  <b>{profilePercent}%</b>
+                </div>
+                <div className="home-progress-track">
+                  <div style={{ width: `${profilePercent}%` }} />
+                </div>
+              </div>
+
+              <div className="home-profile-details">
+                <div>
+                  <span>Тип бизнеса</span>
+                  <b>{businessTypeNames[profile.businessType] || 'Не указан'}</b>
+                </div>
+                <div>
+                  <span>Стадия</span>
+                  <b>{stageNames[profile.stage] || 'Не указана'}</b>
+                </div>
+                <div>
+                  <span>Опыт</span>
+                  <b>{experienceNames[profile.experience] || 'Не указан'}</b>
+                </div>
+                <div>
+                  <span>Напоминания</span>
+                  <b>{reminders.filter(r => r.active).length} активных</b>
+                </div>
+              </div>
+
+              <button className="home-profile-button" onClick={() => setTab('business')}>
+                {profileReady ? 'Дополнить профиль' : 'Настроить профиль'}
+                <ArrowRight size={15} />
+              </button>
+            </div>
+
+            <div className="home-section-heading">
+              <div>
+                <div className="eyebrow">ИНСТРУМЕНТЫ</div>
+                <h2>Что будем делать?</h2>
+              </div>
+            </div>
+
+            <div className="home-actions">
+              <button onClick={() => setTab('chat')}>
+                <div className="home-action-icon red"><MessageCircle size={21} /></div>
+                <span>
+                  <b>Спросить Skilly</b>
+                  <small>Разобраться в вопросе бизнеса</small>
+                </span>
+                <ChevronRight />
+              </button>
+
+              <button onClick={() => setTab('materials')}>
+                <div className="home-action-icon"><BookOpen size={21} /></div>
+                <span>
+                  <b>Найти материалы</b>
+                  <small>Обучение из базы «Альфа-Курса»</small>
+                </span>
+                <ChevronRight />
+              </button>
+
+              <button onClick={() => setShowNewReminder(true)}>
+                <div className="home-action-icon"><CalendarClock size={21} /></div>
+                <span>
+                  <b>Создать напоминание</b>
+                  <small>Не забыть о важных делах</small>
+                </span>
+                <ChevronRight />
+              </button>
+            </div>
+
+            <div className="home-tip">
+              <div className="home-tip-icon"><TrendingUp size={20} /></div>
+              <div>
+                <b>Маленькие шаги ведут к результату</b>
+                <p>
+                  Начните с заполнения профиля и сформулируйте главную задачу,
+                  которую хотите решить в бизнесе.
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
+
         {tab === 'chat' && (
           <section className="chat-page">
             <div className="welcome-line">
@@ -559,7 +715,7 @@ export default function App() {
                 <span><b>Найти материалы</b><small>Подборка под вашу задачу</small></span>
                 <ChevronRight />
               </button>
-              <button onClick={() => setTab('reminders')}>
+              <button onClick={() => setShowNewReminder(true)}>
                 <CalendarClock />
                 <span><b>Создать напоминание</b><small>Сроки и важные дела</small></span>
                 <ChevronRight />
@@ -667,7 +823,7 @@ export default function App() {
                   className="text-action"
                   onClick={() => {
                     setTab('chat')
-                    void sendMessage('Подбери материалы под мою задачу')
+                    setInput('Подбери материалы под мою задачу')
                   }}
                 >
                   Подобрать материалы <ChevronRight size={16} />
@@ -731,12 +887,7 @@ export default function App() {
             <div className="form-card">
               <label>
                 Тип бизнеса
-                <select
-                  value={profile.businessType}
-                  onChange={e =>
-                    setProfile(p => ({ ...p, businessType: e.target.value }))
-                  }
-                >
+                <select value={profile.businessType} onChange={e => setProfile(p => ({ ...p, businessType: e.target.value }))}>
                   <option value="">Выберите тип бизнеса</option>
                   <option value="retail">Розничная торговля</option>
                   <option value="online_store">Интернет-магазин</option>
@@ -772,12 +923,7 @@ export default function App() {
 
               <label>
                 Опыт в предпринимательстве
-                <select
-                  value={profile.experience}
-                  onChange={e =>
-                    setProfile(p => ({ ...p, experience: e.target.value }))
-                  }
-                >
+                <select value={profile.experience} onChange={e => setProfile(p => ({ ...p, experience: e.target.value }))}>
                   <option value="">Выберите свой опыт</option>
                   <option value="novice">Начинающий, опыта почти нет</option>
                   <option value="some">Есть некоторый опыт</option>
@@ -830,6 +976,9 @@ export default function App() {
       </main>
 
       <nav className="bottom-nav">
+        <button className={tab === 'home' ? 'active' : ''} onClick={() => setTab('home')}>
+          <Home /><span>Главная</span>
+        </button>
         <button className={tab === 'chat' ? 'active' : ''} onClick={() => setTab('chat')}>
           <MessageCircle /><span>Чат</span>
         </button>
@@ -837,10 +986,10 @@ export default function App() {
           <BookOpen /><span>Материалы</span>
         </button>
         <button className={tab === 'reminders' ? 'active' : ''} onClick={() => setTab('reminders')}>
-          <Bell /><span>Напоминания</span>
+          <Bell /><span>Задачи</span>
         </button>
         <button className={tab === 'business' ? 'active' : ''} onClick={() => setTab('business')}>
-          <BriefcaseBusiness /><span>Мой бизнес</span>
+          <BriefcaseBusiness /><span>Профиль</span>
         </button>
       </nav>
 
