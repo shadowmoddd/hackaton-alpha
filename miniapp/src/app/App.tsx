@@ -1,5 +1,4 @@
-﻿
-import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowRight, ArrowUp, Bell, BookOpen, BriefcaseBusiness, CalendarClock,
   Check, ChevronRight, Clock3, Home, MessageCircle, Plus, Send,
@@ -59,8 +58,37 @@ const prompts = [
   'Как выбрать систему налогообложения?',
   'Как привлечь первых клиентов?',
   'Что важно учесть при открытии ИП?',
-  'Подбери материалы по маркетингу'
+  'Как рассчитать стартовый бюджет?',
+  'Как составить бизнес-план?',
+  'Как определить целевую аудиторию?',
+  'Как продвигать бизнес без большого бюджета?',
+  'Как правильно установить цену на товар?',
+  'Как увеличить продажи?',
+  'Как найти надёжных поставщиков?',
+  'Как оформить сотрудников?',
+  'Какие налоги должен платить предприниматель?',
+  'Как вести учёт доходов и расходов?',
+  'Как открыть интернет-магазин?',
+  'Как выбрать название для бизнеса?',
+  'Как анализировать конкурентов?',
+  'Как создать программу лояльности?',
+  'Как привлечь клиентов через социальные сети?',
+  'Какие ошибки совершают начинающие предприниматели?',
+  'Подбери материалы для развития бизнеса'
 ]
+
+const PROMPT_STORAGE_KEY = 'skilly_prompt_queue_v1'
+
+function shufflePrompts(items: string[]): string[] {
+  const result = [...items]
+
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[result[i], result[j]] = [result[j], result[i]]
+  }
+
+  return result
+}
 
 const initialProfile: BusinessProfile = {
   stage: '',
@@ -158,6 +186,31 @@ export default function App() {
   const [materials, setMaterials] = useState<Material[]>([])
   const [materialQuery, setMaterialQuery] = useState('')
 
+  // Очередь подсказок сохраняется в браузере и переживает перезагрузку Mini App.
+  const [promptQueue, setPromptQueue] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem(PROMPT_STORAGE_KEY)
+
+      if (saved) {
+        const parsed: unknown = JSON.parse(saved)
+
+        if (
+          Array.isArray(parsed) &&
+          parsed.length > 0 &&
+          parsed.every((item): item is string =>
+            typeof item === 'string' && prompts.includes(item)
+          )
+        ) {
+          return parsed
+        }
+      }
+    } catch {
+      // При повреждённом сохранении создаём новую очередь.
+    }
+
+    return shufflePrompts(prompts)
+  })
+
   const profileFilledCount = [
     profile.businessType,
     profile.stage,
@@ -180,6 +233,14 @@ export default function App() {
     const timer = window.setTimeout(() => setNotice(''), 2600)
     return () => window.clearTimeout(timer)
   }, [notice])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PROMPT_STORAGE_KEY, JSON.stringify(promptQueue))
+    } catch {
+      // Работа подсказок не должна ломаться, если хранилище браузера недоступно.
+    }
+  }, [promptQueue])
 
   useEffect(() => {
     const webApp = window.Telegram?.WebApp
@@ -443,6 +504,23 @@ export default function App() {
     }
   }
 
+  function sendPrompt(question: string) {
+    // Не расходуем подсказку, если запрос нельзя отправить.
+    if (sending || !connected) {
+      void sendMessage(question)
+      return
+    }
+
+    setPromptQueue(current => {
+      const remaining = current.filter(item => item !== question)
+
+      // Когда все 20 вопросов использованы, перемешиваем полный список заново.
+      return remaining.length > 0 ? remaining : shufflePrompts(prompts)
+    })
+
+    void sendMessage(question)
+  }
+
   function openChatWithQuestion(question: string) {
     setTab('chat')
     void sendMessage(question)
@@ -669,8 +747,13 @@ export default function App() {
 
               <div className="suggestions-label">Попробуйте спросить</div>
               <div className="prompt-list">
-                {prompts.map(p => (
-                  <button key={p} className="prompt-chip" onClick={() => void sendMessage(p)}>
+                {promptQueue.slice(0, 4).map(p => (
+                  <button
+                    key={p}
+                    className="prompt-chip"
+                    onClick={() => sendPrompt(p)}
+                    disabled={sending || !connected}
+                  >
                     {p}<ArrowUp size={13} />
                   </button>
                 ))}

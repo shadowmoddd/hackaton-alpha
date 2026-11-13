@@ -49,7 +49,7 @@ ANSWER_SYSTEM = """
 3. Если фрагменты не содержат ответа, верни ровно НЕТ_ОТВЕТА.
 4. Не делай выводов, которые не подтверждаются фрагментами.
 5. Отвечай непосредственно на вопрос, а не пересказывай все фрагменты.
-6. Пиши по-русски, понятно и без канцелярита.
+6. Пиши по-русски, понятно, дружелюбно и без канцелярита.
 7. Обычно достаточно 3–6 предложений.
 8. Если вопрос предполагает инструкцию, используй короткие шаги.
 9. Не добавляй ссылки и не рекламируй курсы.
@@ -185,10 +185,12 @@ async def _answer(
     analysis: dict,
     profile: dict,
 ) -> Reply:
-    query = analysis.get("search_query") or text
+    """Отвечает по базе знаний и автоматически прикрепляет материалы."""
+
+    query = (analysis.get("search_query") or text).strip()
 
     try:
-        chunks = await search.kb(query, limit=6)
+        chunks = await search.kb(query, limit=8)
     except Exception:
         log.exception("Knowledge search failed for user %s", user_id)
         await db.log_event(
@@ -200,8 +202,7 @@ async def _answer(
 
     best_score = (
         float(chunks[0].get("score") or 0)
-        if chunks
-        else 0.0
+        if chunks else 0.0
     )
 
     if not chunks or best_score < settings.kb_min_score:
@@ -218,7 +219,7 @@ async def _answer(
 
     context_parts = []
 
-    for index, chunk in enumerate(chunks[:4], start=1):
+    for index, chunk in enumerate(chunks[:5], start=1):
         title = chunk.get("title") or "Без названия"
         content = chunk.get("text") or ""
 
@@ -238,15 +239,21 @@ async def _answer(
         f"Профиль пользователя: {profile_text(profile)}\n\n"
         f"Вопрос пользователя: {text[:2000]}\n\n"
         f"Фрагменты базы знаний:\n{context}\n\n"
-        "Ответь на вопрос строго по этим фрагментам."
+        "Ответь на вопрос строго по фрагментам базы знаний. "
+        "Пиши дружелюбно, как опытный наставник. "
+        "Сначала дай прямой ответ, затем при необходимости "
+        "короткий список конкретных действий. "
+        "Не перегружай ответ терминами. "
+        "В конце предложи один логичный следующий шаг. "
+        "Не выдумывай ссылки: материалы будут прикреплены отдельно."
     )
 
     try:
         answer = await llm.chat(
             ANSWER_SYSTEM,
             prompt,
-            temperature=0.1,
-            max_tokens=700,
+            temperature=0.2,
+            max_tokens=800,
         )
     except Exception:
         log.exception("Answer generation failed for user %s", user_id)
@@ -259,8 +266,7 @@ async def _answer(
 
     answer = (answer or "").strip()
 
-    # Проверяем точный маркер, а не любое вхождение фразы.
-    if not answer or answer.strip().upper() == "НЕТ_ОТВЕТА":
+    if not answer or answer.upper() == "НЕТ_ОТВЕТА":
         await db.log_event(
             user_id,
             "no_answer",
@@ -272,6 +278,26 @@ async def _answer(
         )
         return _no_answer()
 
+    # Подбираем материалы по той же теме, что и ответ.
+    # Ошибка поиска материалов не должна уничтожать сам ответ.
+    materials = []
+
+    try:
+        found = await search.materials(query, limit=20)
+        materials = recs.rank(found, profile, top=3)
+    except Exception:
+        log.exception("Material search failed for user %s", user_id)
+
+    output = answer
+
+    if materials:
+        output += (
+            "\n\n📚 Материалы по вашей теме:\n\n"
+            + _mat_lines(materials)
+        )
+
+    buttons = _mat_buttons(materials) or None
+
     await db.log_event(
         user_id,
         "answer",
@@ -279,12 +305,11 @@ async def _answer(
             "query": text[:200],
             "best_score": round(best_score, 4),
             "chunks": len(context_parts),
+            "materials": len(materials),
         },
     )
 
-    # В обычном ответе не добавляем материалы автоматически.
-    # Пользователь может отдельно попросить их подобрать.
-    return answer, None
+    return output, buttons
 
 
 async def _recommend(
