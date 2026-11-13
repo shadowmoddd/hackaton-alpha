@@ -6,7 +6,16 @@ import asyncpg
 from .config import settings
 
 _pool: asyncpg.Pool | None = None
-PROFILE_FIELDS = {"stage", "area", "tax_regime", "experience", "goal", "tz"}
+
+PROFILE_FIELDS = {
+    "stage",
+    "area",
+    "business_type",
+    "tax_regime",
+    "experience",
+    "goal",
+    "tz",
+}
 
 
 async def init_pool() -> asyncpg.Pool:

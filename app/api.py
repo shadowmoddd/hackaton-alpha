@@ -189,11 +189,11 @@ class ChatRequest(BaseModel):
 class ProfileRequest(BaseModel):
     stage: str | None = None
     area: str | None = None
+    business_type: str | None = None
     tax_regime: str | None = None
     experience: str | None = None
     goal: str | None = None
     tz: str | None = None
-
 
 class ReminderRequest(BaseModel):
     text: str = Field(min_length=1, max_length=300)

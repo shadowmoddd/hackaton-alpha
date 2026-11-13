@@ -2,6 +2,7 @@
 """Разбор сообщений пользователя: намерение, профиль, поиск и напоминания."""
 
 import json
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -14,6 +15,33 @@ STAGES = {"idea", "launch", "running", "growing"}
 REGIMES = {"usn", "npd", "osno", "patent", "other"}
 EXPERIENCE = {"novice", "some", "experienced"}
 REPEATS = {"none", "daily", "weekly", "monthly", "every_n_days"}
+
+# Фразы, которые сами по себе не являются темой для поиска.
+GENERIC_RECOMMEND_RE = re.compile(
+    r"^\s*(?:"
+    r"подбери|подберите|найди|найдите|порекомендуй|порекомендуйте"
+    r")\s+(?:мне\s+)?(?:"
+    r"материалы|курсы|обучение|инструкции|ресурсы"
+    r")\s*(?:под\s+(?:мою|эту|нашу)\s+задачу)?[.!?]*\s*$",
+    re.IGNORECASE,
+)
+
+GENERIC_PHRASES = {
+    "подбери материалы под мою задачу",
+    "подберите материалы под мою задачу",
+    "подбери материалы",
+    "подберите материалы",
+    "найди материалы",
+    "найдите материалы",
+    "порекомендуй материалы",
+    "порекомендуйте материалы",
+    "подбери под это",
+    "подберите под это",
+    "расскажи подробнее",
+    "помоги мне",
+    "да",
+    "нет",
+}
 
 
 SYSTEM = """
@@ -51,13 +79,14 @@ SYSTEM = """
    с первоначальной задачей.
 3. Не воспринимай фразы «да», «нет», «для моего бизнеса», «подбери под это»
    как самостоятельные поисковые запросы.
-4. Если пользователь пишет «подбери материалы под мою задачу»,
-   используй задачу из истории диалога. Если задачи в истории нет —
-   задай один конкретный уточняющий вопрос.
-5. Не меняй намерение пользователя без причины.
-6. Не задавай повторно вопрос, на который пользователь уже ответил.
-7. Не задавай уточнение, если можно дать полезный ответ без него.
-8. Не придумывай сведения о пользователе.
+4. Если пользователь просит подобрать материалы под свою задачу,
+   восстанови конкретную задачу из последних сообщений диалога.
+5. Если задачи в истории нет, используй основную цель пользователя из профиля.
+6. Если нет ни задачи в диалоге, ни цели в профиле — задай один конкретный
+   уточняющий вопрос.
+7. Не меняй намерение пользователя без причины.
+8. Не задавай повторно вопрос, на который пользователь уже ответил.
+9. Не придумывай сведения о пользователе.
 
 Правила search_query:
 - Только конкретная тема или задача пользователя.
@@ -189,6 +218,75 @@ def _reminder_data(data):
     }
 
 
+def _history_task(history, current_text):
+    """Ищет последнюю конкретную задачу пользователя в истории."""
+
+    if not isinstance(history, list):
+        return None
+
+    current_normalized = current_text.strip().lower()
+
+    for item in reversed(history):
+        if not isinstance(item, (tuple, list)) or len(item) < 2:
+            continue
+
+        role, content = item[0], item[1]
+
+        if role not in {"user", "human"}:
+            continue
+
+        content = _clean(content)
+        if not content:
+            continue
+
+        normalized = content.lower()
+
+        if normalized == current_normalized:
+            continue
+
+        if normalized in GENERIC_PHRASES:
+            continue
+
+        if GENERIC_RECOMMEND_RE.match(content):
+            continue
+
+        # Не используем короткие ответы и приветствия как задачу.
+        if len(content) < 12:
+            continue
+
+        return content[:500]
+
+    return None
+
+
+def _is_generic_recommendation(text):
+    normalized = re.sub(r"\s+", " ", text.strip().lower())
+
+    return (
+        normalized in GENERIC_PHRASES
+        or bool(GENERIC_RECOMMEND_RE.match(text))
+    )
+
+
+def _resolve_recommendation_query(text, profile, history):
+    """Восстанавливает тему рекомендаций из диалога или профиля."""
+
+    task = _history_task(history, text)
+
+    if task:
+        return task, None
+
+    goal = _clean(profile.get("goal")) if isinstance(profile, dict) else None
+
+    if goal:
+        return goal, None
+
+    return None, (
+        "Какую задачу вы хотите решить? Например: найти первых клиентов, "
+        "увеличить продажи или разобраться с налогами."
+    )
+
+
 async def run(
     text: str,
     profile: dict,
@@ -197,9 +295,10 @@ async def run(
     """Анализирует сообщение и возвращает нормализованную структуру."""
 
     history = history or []
+    profile = profile or {}
+
     tz_name = profile.get("tz") or settings.default_tz
     tz = _timezone(tz_name)
-
     now = datetime.now(tz).isoformat(timespec="minutes")
 
     known = {
@@ -238,6 +337,11 @@ async def run(
     if intent not in INTENTS:
         intent = "question"
 
+    # Явная просьба о подборе материалов имеет приоритет
+    # над случайной классификацией модели.
+    if _is_generic_recommendation(text):
+        intent = "recommend"
+
     profile_update = _profile_update(data.get("profile"))
 
     reminder = None
@@ -247,13 +351,27 @@ async def run(
     search_query = _clean(data.get("search_query"))
     clarify = _clean(data.get("clarify"))
 
-    # Не допускаем пустого поискового запроса.
-    if not search_query:
+    if intent == "recommend" and _is_generic_recommendation(text):
+        search_query, context_clarify = _resolve_recommendation_query(
+            text,
+            profile,
+            history,
+        )
+
+        if context_clarify:
+            clarify = context_clarify
+
+    elif not search_query:
         search_query = text.strip()
+
+    # Не отправляем общие фразы в поисковый индекс.
+    if intent == "recommend" and search_query:
+        if _is_generic_recommendation(search_query):
+            search_query = None
 
     return {
         "intent": intent,
-        "search_query": search_query[:500],
+        "search_query": search_query[:500] if search_query else None,
         "clarify": clarify[:300] if clarify else None,
         "profile": profile_update,
         "reminder": reminder,

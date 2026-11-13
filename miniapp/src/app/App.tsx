@@ -30,7 +30,9 @@ type Reminder = {
 
 type BusinessProfile = {
   stage: string
+  businessType: string
   sphere: string
+  experience: string
   tax: string
   goal: string
   timezone: string
@@ -60,7 +62,9 @@ const prompts = [
 
 const initialProfile: BusinessProfile = {
   stage: '',
+  businessType: '',
   sphere: '',
+  experience: '',
   tax: '',
   goal: '',
   timezone: 'Europe/Moscow'
@@ -128,9 +132,25 @@ export default function App() {
   const [materialQuery, setMaterialQuery] = useState('')
 
   const profileReady = useMemo(
-    () => Boolean(profile.stage || profile.sphere || profile.tax || profile.goal),
+    () => Boolean(
+      profile.businessType ||
+      profile.stage ||
+      profile.sphere ||
+      profile.experience ||
+      profile.tax ||
+      profile.goal
+    ),
     [profile]
   )
+
+  const profileFilledCount = [
+    profile.businessType,
+    profile.stage,
+    profile.sphere,
+    profile.experience,
+    profile.tax,
+    profile.goal
+  ].filter(Boolean).length
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -166,7 +186,9 @@ export default function App() {
 
         setProfile({
           stage: p?.stage || '',
+          businessType: p?.business_type || '',
           sphere: p?.area || '',
+          experience: p?.experience || '',
           tax: ({
             usn: 'УСН',
             npd: 'НПД',
@@ -180,7 +202,6 @@ export default function App() {
 
         setReminders(normalizeReminders(r?.items))
 
-        // История безопасно приводится к типизированному массиву.
         const history = asArray<HistoryItem>(h?.items)
 
         if (history.length > 0) {
@@ -374,7 +395,9 @@ export default function App() {
         method: 'PUT',
         body: JSON.stringify({
           stage: profile.stage,
+          business_type: profile.businessType,
           area: profile.sphere,
+          experience: profile.experience,
           tax_regime: regime,
           goal: profile.goal,
           tz: profile.timezone
@@ -698,7 +721,7 @@ export default function App() {
               <div className="profile-icon"><BriefcaseBusiness /></div>
               <div>
                 <b>{profileReady ? 'Профиль заполняется' : 'Расскажите о своём деле'}</b>
-                <span>{[profile.stage, profile.sphere, profile.tax, profile.goal].filter(Boolean).length} из 4 параметров заполнено</span>
+                <span>{profileFilledCount} из 6 параметров заполнено</span>
               </div>
               <span className="profile-check">
                 {profileReady ? <Check size={18} /> : <UserRound size={18} />}
@@ -706,6 +729,27 @@ export default function App() {
             </div>
 
             <div className="form-card">
+              <label>
+                Тип бизнеса
+                <select
+                  value={profile.businessType}
+                  onChange={e =>
+                    setProfile(p => ({ ...p, businessType: e.target.value }))
+                  }
+                >
+                  <option value="">Выберите тип бизнеса</option>
+                  <option value="retail">Розничная торговля</option>
+                  <option value="online_store">Интернет-магазин</option>
+                  <option value="services">Услуги</option>
+                  <option value="cafe_restaurant">Кафе или ресторан</option>
+                  <option value="production">Производство</option>
+                  <option value="construction">Строительство и ремонт</option>
+                  <option value="it">IT и цифровые продукты</option>
+                  <option value="freelance">Самозанятость и фриланс</option>
+                  <option value="other">Другое</option>
+                </select>
+              </label>
+
               <label>
                 На какой вы стадии?
                 <select value={profile.stage} onChange={e => setProfile(p => ({ ...p, stage: e.target.value }))}>
@@ -724,6 +768,21 @@ export default function App() {
                   onChange={e => setProfile(p => ({ ...p, sphere: e.target.value }))}
                   placeholder="Например, розничная торговля"
                 />
+              </label>
+
+              <label>
+                Опыт в предпринимательстве
+                <select
+                  value={profile.experience}
+                  onChange={e =>
+                    setProfile(p => ({ ...p, experience: e.target.value }))
+                  }
+                >
+                  <option value="">Выберите свой опыт</option>
+                  <option value="novice">Начинающий, опыта почти нет</option>
+                  <option value="some">Есть некоторый опыт</option>
+                  <option value="experienced">Опытный предприниматель</option>
+                </select>
               </label>
 
               <label>

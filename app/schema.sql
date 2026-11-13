@@ -49,3 +49,6 @@ CREATE TABLE IF NOT EXISTS app.events (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS app_events_user_type_idx ON app.events(user_id, type, created_at);
+-- Дополнительные сведения о бизнесе пользователя.
+ALTER TABLE app.profiles
+ADD COLUMN IF NOT EXISTS business_type TEXT;
