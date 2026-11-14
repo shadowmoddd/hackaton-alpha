@@ -1,10 +1,15 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowRight, ArrowUp, Bell, BookOpen, BriefcaseBusiness, CalendarClock,
   Check, ChevronRight, Clock3, Home, MessageCircle, Plus, Send,
   ShieldCheck, Sparkles, Target, TrendingUp, UserRound, X
 } from 'lucide-react'
 import '@/styles/globals.css'
+import agentMark from '@/assets/agent-symbol.png'
+import agentMainCharacter from '@/assets/agent-main-character.png'
+import agentNotifications from '@/assets/agent-notifications.png'
+import agentCapabilities from '@/assets/agent-capabilities.png'
+import agentWordmark from '@/assets/agent-wordmark.png'
 import {
   api, ApiProfile, ApiReminder, ApiMaterial, isTelegramWebApp
 } from '@/shared/api'
@@ -49,7 +54,7 @@ const initialMessages: Message[] = [
   {
     id: 1,
     role: 'assistant',
-    text: 'Здравствуйте! Я Skilly — помощник для предпринимателей. Помогу разобраться в вопросах бизнеса, найти материалы «Альфа-Курса» и не забыть о важных делах.\n\nС чего начнём?',
+    text: 'Здравствуйте! Я Агент — ваш AI-помощник для предпринимателей. Помогу разобраться в вопросах бизнеса, найти материалы «Альфа-Курса» и не забыть о важных делах.\n\nС чего начнём?',
     time: 'Сейчас'
   }
 ]
@@ -77,7 +82,7 @@ const prompts = [
   'Подбери материалы для развития бизнеса'
 ]
 
-const PROMPT_STORAGE_KEY = 'skilly_prompt_queue_v1'
+const PROMPT_STORAGE_KEY = 'agent_prompt_queue_v1'
 
 function shufflePrompts(items: string[]): string[] {
   const result = [...items]
@@ -529,10 +534,11 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand-mark">S</div>
+        <div className="brand-mark"><img src={agentMark} alt="" /></div>
+        <img className="brand-wordmark" src={agentWordmark} alt="АГЕНТ" />
         <div className="brand-copy">
-          <b>Skilly</b>
-          <span>помощник предпринимателя</span>
+          <b>АГЕНТ</b>
+          <span>AI-ПОМОЩНИК ДЛЯ БИЗНЕСА</span>
         </div>
         <div className="top-status">
           <span className="status-dot" />
@@ -547,17 +553,18 @@ export default function App() {
             <div className="home-greeting">
               <div>
                 <div className="eyebrow">ВАШ БИЗНЕС · ВАШ РОСТ</div>
-                <h1>Добро пожаловать в Skilly</h1>
-                <p>Ваш помощник в развитии бизнеса и обучении на каждом этапе.</p>
+                <h1>Ваш бизнес. Новый уровень.</h1>
+                <p>Персональный AI-помощник для решений, роста и уверенных действий.</p>
               </div>
-              <div className="home-avatar"><Sparkles size={27} /></div>
+              <div className="home-avatar"><img src={agentMark} alt="Агент" /></div>
             </div>
 
             <div className="home-hero">
+              <img className="hero-agent-art" src={agentMainCharacter} alt="Иллюстрация Агента" />
               <div className="home-hero-label">
                 <Sparkles size={15} /> ПЕРСОНАЛЬНЫЙ ИИ-ПОМОЩНИК
               </div>
-              <h2>Развивайте бизнес. Мы поможем сориентироваться.</h2>
+              <h2>Идеи превращаются в действия.</h2>
               <p>
                 Получайте ответы на вопросы, находите полезные материалы
                 «Альфа-Курса» и планируйте важные задачи в одном месте.
@@ -584,7 +591,7 @@ export default function App() {
                   <b>{profile.goal || 'Определите главную цель бизнеса'}</b>
                   <span>
                     {profileReady
-                      ? 'Skilly сможет точнее учитывать ваш контекст'
+                      ? 'Агент сможет точнее учитывать ваш контекст'
                       : 'Заполните профиль, чтобы получать персональные рекомендации'}
                   </span>
                 </div>
@@ -636,7 +643,7 @@ export default function App() {
               <button onClick={() => setTab('chat')}>
                 <div className="home-action-icon red"><MessageCircle size={21} /></div>
                 <span>
-                  <b>Спросить Skilly</b>
+                  <b>Спросить Агента</b>
                   <small>Разобраться в вопросе бизнеса</small>
                 </span>
                 <ChevronRight />
@@ -682,7 +689,7 @@ export default function App() {
                 <h1>Чем помочь вашему бизнесу?</h1>
                 <p>Задайте вопрос — разберёмся вместе.</p>
               </div>
-              <div className="hero-icon"><Sparkles size={25} /></div>
+              <div className="chat-mascot"><img src={agentCapabilities} alt="Агент помогает с вопросами бизнеса" /></div>
             </div>
 
             <div className="trust-note">
@@ -696,8 +703,8 @@ export default function App() {
 
             <div className="chat-window">
               <div className="chat-heading">
-                <div className="assistant-avatar"><Sparkles size={17} /></div>
-                <div><b>Skilly</b><span>Помогаю с задачами бизнеса</span></div>
+                <div className="assistant-avatar"><img src={agentMark} alt="" /></div>
+                <div><b>Агент</b><span>Ваш помощник по развитию бизнеса</span></div>
                 <span className="online-pill">{connected ? 'подключено' : 'ожидание'}</span>
               </div>
 
@@ -705,7 +712,7 @@ export default function App() {
                 {asArray<Message>(messages).map(m => (
                   <div key={m.id} className={`message-row ${m.role}`}>
                     {m.role === 'assistant' && (
-                      <div className="message-avatar"><Sparkles size={14} /></div>
+                      <div className="message-avatar"><img src={agentMark} alt="" /></div>
                     )}
                     <div className="bubble-wrap">
                       <div className="bubble">
@@ -788,7 +795,7 @@ export default function App() {
                 </button>
               </form>
               <div className="composer-foot">
-                {sending ? 'Skilly готовит ответ…' : 'Enter — отправить · Shift + Enter — новая строка'}
+                {sending ? 'Агент готовит ответ…' : 'Enter — отправить · Shift + Enter — новая строка'}
               </div>
             </div>
 
@@ -814,6 +821,7 @@ export default function App() {
             <p className="page-lead">Не пропускайте важные события и возвращайтесь к обучению вовремя.</p>
 
             <div className="reminder-info">
+              <img className="reminder-mascot" src={agentNotifications} alt="Агент напоминает о важных делах" />
               <Bell size={18} />
               <div>
                 <b>Разовые и повторяющиеся события</b>
@@ -832,7 +840,7 @@ export default function App() {
 
             {reminders.length === 0 ? (
               <div className="empty-state">
-                <div className="empty-icon"><CalendarClock /></div>
+                <div className="empty-icon"><img src={agentNotifications} alt="" /></div>
                 <b>Пока нет напоминаний</b>
                 <p>Добавьте первое событие — оно появится здесь.</p>
               </div>
@@ -894,6 +902,7 @@ export default function App() {
             </div>
 
             <div className="material-feature">
+              <img className="capabilities-art" src={agentCapabilities} alt="Агент помогает находить полезные материалы" />
               <div className="feature-icon"><Sparkles size={22} /></div>
               <div>
                 <span className="feature-label">ПЕРСОНАЛЬНЫЙ ПОДБОР</span>
