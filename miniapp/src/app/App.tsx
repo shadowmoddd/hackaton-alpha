@@ -1,3 +1,4 @@
+
 import { useEffect, useRef, useState } from 'react'
 import {
   ArrowRight, ArrowUp, Bell, BookOpen, BriefcaseBusiness, CalendarClock,
@@ -169,6 +170,33 @@ function normalizeReminders(value: unknown): Reminder[] {
       'Не повторять',
     active: Boolean(x.active)
   }))
+}
+
+// Возвращает минимальную дату и время именно в часовом поясе профиля.
+// Формат результата подходит для input type="datetime-local".
+function getDateTimeLocalMin(timeZone: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23'
+    }).formatToParts(new Date())
+
+    const values = Object.fromEntries(
+      parts.map(part => [part.type, part.value])
+    )
+
+    return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`
+  } catch {
+    // Резервный вариант, если часовой пояс профиля некорректен.
+    const now = new Date()
+    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+    return local.toISOString().slice(0, 16)
+  }
 }
 
 export default function App() {
@@ -430,6 +458,16 @@ export default function App() {
 
     if (!connected) {
       setNotice(connectionError || 'Нет подключения к серверу')
+      return
+    }
+
+    // Дополнительная проверка перед отправкой запроса.
+    // Сравнение выполняется в формате YYYY-MM-DDTHH:mm
+    // и использует часовой пояс профиля.
+    const minimumDate = getDateTimeLocalMin(profile.timezone || 'Europe/Moscow')
+
+    if (reminderDate <= minimumDate) {
+      setNotice('Выберите дату и время в будущем')
       return
     }
 
@@ -1115,6 +1153,8 @@ export default function App() {
                 onChange={e => setReminderTitle(e.target.value)}
                 placeholder="Например, закончить урок или подготовить проект"
                 autoFocus
+                required
+                maxLength={200}
               />
             </label>
 
@@ -1124,7 +1164,8 @@ export default function App() {
                 type="datetime-local"
                 value={reminderDate}
                 onChange={e => setReminderDate(e.target.value)}
-                min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+                min={getDateTimeLocalMin(profile.timezone || 'Europe/Moscow')}
+                required
               />
             </label>
 

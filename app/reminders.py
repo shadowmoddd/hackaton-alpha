@@ -1,19 +1,11 @@
-"""Напоминания: разовые и повторяющиеся, налоговые сроки, планировщик.
 
-Защита от навязчивости:
-  * «тихие часы» (QUIET_START..QUIET_END по часовому поясу пользователя): сообщения переносятся на утро;
-  * не более MAX_REMINDERS_PER_DAY сообщений-напоминаний в сутки на пользователя;
-  * не более MAX_REMINDERS_PER_USER активных пользовательских напоминаний;
-  * в каждом напоминании кнопки «Отложить», «Реже/Чаще», «Отключить».
+"""Планировщик пользовательских и налоговых напоминаний."""
 
-Налоговый календарь — ПРИМЕРНЫЙ (прототип): сроки сдвигаются при выходных и могут
-меняться, их нужно сверять с актуальными данными ФНС.
-"""
 import asyncio
 import json
 import logging
 from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -25,7 +17,6 @@ from .util import is_url, link
 
 log = logging.getLogger(__name__)
 
-# (периодичность, месяц, день срока, описание)
 TAX_RULES = {
     "usn": [
         ("yearly", 3, 28, "УСН: годовой налог (для организаций)"),
@@ -41,212 +32,631 @@ TAX_RULES = {
         ("yearly", 7, 1, "ИП: взнос 1% с дохода свыше 300 тыс. ₽ за прошлый год"),
     ],
 }
-TAX_LABELS = {"usn": "УСН", "npd": "самозанятый (НПД)", "ip_fixed": "ИП: страховые взносы"}
+
+TAX_LABELS = {
+    "usn": "УСН",
+    "npd": "самозанятый (НПД)",
+    "ip_fixed": "ИП: страховые взносы",
+}
+
 REMIND_DAYS_BEFORE = 3
+CHECK_INTERVAL_SECONDS = 30
+MAX_BATCH_SIZE = 50
 
 
 def tz_of(name: str | None) -> ZoneInfo:
+    """Возвращает часовой пояс пользователя или часовой пояс по умолчанию."""
+    fallback = settings.default_tz
+
     try:
-        return ZoneInfo(name or settings.default_tz)
-    except Exception:
-        return ZoneInfo(settings.default_tz)
+        return ZoneInfo(name or fallback)
+    except (ZoneInfoNotFoundError, ValueError, TypeError):
+        log.warning("Неизвестный часовой пояс %r. Используется %s", name, fallback)
+        return ZoneInfo(fallback)
 
 
 def rule_from(repeat: str, n: int | None) -> str | None:
+    """Преобразует периодичность в формат хранения в БД."""
     if repeat == "daily":
         return "days:1"
+
     if repeat == "weekly":
         return "days:7"
+
     if repeat == "monthly":
         return "monthly"
-    if repeat == "every_n_days" and n:
-        return f"days:{max(1, min(int(n), 365))}"
+
+    if repeat == "yearly":
+        return "yearly"
+
+    if repeat == "every_n_days" and n is not None:
+        try:
+            days = int(n)
+        except (TypeError, ValueError):
+            return None
+
+        if 1 <= days <= 365:
+            return f"days:{days}"
+
     return None
 
 
 def human_rule(rule: str | None) -> str:
+    """Человекочитаемое описание повторения."""
     if not rule:
         return "разово"
+
     if rule == "monthly":
         return "каждый месяц"
+
     if rule == "yearly":
-        return "раз в год"
-    n = int(rule.split(":")[1])
-    if n == 1:
-        return "каждый день"
-    if n == 7:
-        return "каждую неделю"
-    return f"каждые {n} дн."
+        return "каждый год"
+
+    if rule.startswith("days:"):
+        try:
+            days = int(rule.split(":", 1)[1])
+        except (ValueError, IndexError):
+            return "периодически"
+
+        if days == 1:
+            return "каждый день"
+
+        if days == 7:
+            return "каждую неделю"
+
+        return f"каждые {days} дн."
+
+    return "периодически"
 
 
 def advance(dt: datetime, rule: str) -> datetime:
+    """Вычисляет следующее срабатывание повторяющегося напоминания."""
     if rule == "monthly":
         return dt + relativedelta(months=1)
+
     if rule == "yearly":
         return dt + relativedelta(years=1)
-    return dt + timedelta(days=int(rule.split(":")[1]))
+
+    if rule.startswith("days:"):
+        days = int(rule.split(":", 1)[1])
+
+        if days < 1:
+            raise ValueError("Интервал повторения должен быть положительным")
+
+        return dt + timedelta(days=days)
+
+    raise ValueError(f"Неизвестное правило повторения: {rule}")
 
 
-async def create(user_id: int, text: str, next_at: datetime, rule: str | None = None,
-                 tax_key: str | None = None) -> int | None:
+async def create(
+    user_id: int,
+    text: str,
+    next_at: datetime,
+    rule: str | None = None,
+    tax_key: str | None = None,
+) -> int | None:
+    """Создаёт напоминание. Возвращает его ID или None при достижении лимита."""
+    reminder_text = text.strip()
+
+    if not reminder_text:
+        raise ValueError("Текст напоминания не может быть пустым")
+
+    if len(reminder_text) > 300:
+        raise ValueError("Текст напоминания слишком длинный")
+
+    if next_at.tzinfo is None:
+        raise ValueError("Дата напоминания должна содержать часовой пояс")
+
+    if rule is not None:
+        valid_rule = rule == "monthly" or rule == "yearly"
+
+        if rule.startswith("days:"):
+            try:
+                days = int(rule.split(":", 1)[1])
+                valid_rule = 1 <= days <= 365
+            except (ValueError, IndexError):
+                valid_rule = False
+
+        if not valid_rule:
+            raise ValueError("Некорректное правило повторения")
+
+    pool = db.pool()
+
     if tax_key is None:
-        n = await db.pool().fetchval(
-            "SELECT count(*) FROM reminders WHERE user_id=$1 AND active AND tax_key IS NULL", user_id
+        count = await pool.fetchval(
+            """
+            SELECT count(*)
+            FROM reminders
+            WHERE user_id = $1
+              AND active = TRUE
+              AND tax_key IS NULL
+            """,
+            user_id,
         )
-        if n >= settings.max_reminders_per_user:
+
+        if count >= settings.max_reminders_per_user:
             return None
-    return await db.pool().fetchval(
-        "INSERT INTO reminders(user_id, text, next_at, repeat_rule, tax_key) "
-        "VALUES($1,$2,$3,$4,$5) RETURNING id",
-        user_id, text[:300], next_at, rule, tax_key,
+
+    return await pool.fetchval(
+        """
+        INSERT INTO reminders (
+            user_id,
+            text,
+            next_at,
+            repeat_rule,
+            tax_key
+        )
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id
+        """,
+        user_id,
+        reminder_text,
+        next_at.astimezone(timezone.utc),
+        rule,
+        tax_key,
     )
 
 
-async def create_tax(user_id: int, regime: str, tz_name: str | None) -> int:
+async def create_tax(
+    user_id: int,
+    regime: str,
+    tz_name: str | None,
+) -> int:
+    """Создаёт примерные налоговые напоминания для выбранного режима."""
     rules = TAX_RULES.get(regime)
+
     if not rules:
         return 0
-    now = datetime.now(tz_of(tz_name))
+
+    tz = tz_of(tz_name)
+    now = datetime.now(tz)
+
     await db.pool().execute(
-        "DELETE FROM reminders WHERE user_id=$1 AND tax_key LIKE $2", user_id, f"{regime}:%"
+        "DELETE FROM reminders WHERE user_id=$1 AND tax_key LIKE $2",
+        user_id,
+        f"{regime}:%",
     )
-    for i, (kind, month, day, title) in enumerate(rules):
-        base = now.replace(hour=10, minute=0, second=0, microsecond=0)
-        if kind == "monthly":
-            d = base.replace(day=day) - timedelta(days=REMIND_DAYS_BEFORE)
-            if d <= now:
-                d += relativedelta(months=1)
-            rule, when = "monthly", f"{day}-го числа"
-        else:
-            d = base.replace(month=month, day=day) - timedelta(days=REMIND_DAYS_BEFORE)
-            if d <= now:
-                d += relativedelta(years=1)
-            rule, when = "yearly", f"{day:02d}.{month:02d}"
-        await create(
-            user_id, f"Через {REMIND_DAYS_BEFORE} дня срок ({when}): {title}",
-            d.astimezone(timezone.utc), rule, f"{regime}:{i}",
+
+    created = 0
+
+    for index, (kind, month, day, title) in enumerate(rules):
+        base = now.replace(
+            hour=10,
+            minute=0,
+            second=0,
+            microsecond=0,
         )
-    return len(rules)
+
+        if kind == "monthly":
+            candidate = base.replace(day=day) - timedelta(
+                days=REMIND_DAYS_BEFORE
+            )
+
+            if candidate <= now:
+                candidate += relativedelta(months=1)
+
+            rule = "monthly"
+            when = f"{day}-го числа"
+
+        else:
+            candidate = base.replace(
+                month=month,
+                day=day,
+            ) - timedelta(days=REMIND_DAYS_BEFORE)
+
+            if candidate <= now:
+                candidate += relativedelta(years=1)
+
+            rule = "yearly"
+            when = f"{day:02d}.{month:02d}"
+
+        reminder_id = await create(
+            user_id=user_id,
+            text=(
+                f"Через {REMIND_DAYS_BEFORE} дня срок "
+                f"({when}): {title}"
+            ),
+            next_at=candidate.astimezone(timezone.utc),
+            rule=rule,
+            tax_key=f"{regime}:{index}",
+        )
+
+        if reminder_id is not None:
+            created += 1
+
+    return created
 
 
-def describe(r, tz_name: str | None) -> str:
-    local = r["next_at"].astimezone(tz_of(tz_name))
+def describe(reminder, tz_name: str | None) -> str:
+    """Формирует описание напоминания для пользователя."""
+    local = reminder["next_at"].astimezone(tz_of(tz_name))
+
     return (
-        f"🔔 {r['text']}\n"
+        f"🔔 {reminder['text']}\n"
         f"Следующее: {local:%d.%m.%Y %H:%M}\n"
-        f"Повтор: {human_rule(r['repeat_rule'])}"
+        f"Повтор: {human_rule(reminder['repeat_rule'])}"
     )
 
 
-def keyboard(r) -> InlineKeyboardMarkup:
-    rid = r["id"]
-    rows = [[
-        InlineKeyboardButton(text="⏰ Отложить на день", callback_data=f"rem:snooze:{rid}"),
-        InlineKeyboardButton(text="🔕 Отключить", callback_data=f"rem:off:{rid}"),
-    ]]
-    rule = r["repeat_rule"]
+def keyboard(reminder) -> InlineKeyboardMarkup:
+    """Создаёт кнопки управления напоминанием."""
+    reminder_id = reminder["id"]
+
+    rows = [
+        [
+            InlineKeyboardButton(
+                text="⏰ Отложить на день",
+                callback_data=f"rem:snooze:{reminder_id}",
+            ),
+            InlineKeyboardButton(
+                text="🔕 Отключить",
+                callback_data=f"rem:off:{reminder_id}",
+            ),
+        ]
+    ]
+
+    rule = reminder["repeat_rule"]
+
     if rule and rule.startswith("days:"):
-        rows.append([
-            InlineKeyboardButton(text="Реже", callback_data=f"rem:less:{rid}"),
-            InlineKeyboardButton(text="Чаще", callback_data=f"rem:more:{rid}"),
-        ])
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="Реже",
+                    callback_data=f"rem:less:{reminder_id}",
+                ),
+                InlineKeyboardButton(
+                    text="Чаще",
+                    callback_data=f"rem:more:{reminder_id}",
+                ),
+            ]
+        )
+
     if is_url(settings.platform_url):
-        rows.append([InlineKeyboardButton(text="📚 Открыть Альфа-Курс", url=link(settings.platform_url))])
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="📚 Открыть Альфа-Курс",
+                    url=link(settings.platform_url),
+                )
+            ]
+        )
+
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def apply_action(user_id: int, rid: int, action: str) -> str:
+async def apply_action(
+    user_id: int,
+    reminder_id: int,
+    action: str,
+) -> str:
+    """Обрабатывает действия пользователя с напоминанием."""
     pool = db.pool()
-    r = await pool.fetchrow("SELECT * FROM reminders WHERE id=$1 AND user_id=$2", rid, user_id)
-    if not r:
+
+    reminder = await pool.fetchrow(
+        """
+        SELECT *
+        FROM reminders
+        WHERE id = $1
+          AND user_id = $2
+        """,
+        reminder_id,
+        user_id,
+    )
+
+    if not reminder:
         return "Напоминание не найдено."
+
     if action == "off":
-        await pool.execute("UPDATE reminders SET active=false WHERE id=$1", rid)
-        return "Напоминание отключено. Чтобы создать новое, просто напишите мне."
+        await pool.execute(
+            """
+            UPDATE reminders
+            SET active = FALSE
+            WHERE id = $1
+              AND user_id = $2
+            """,
+            reminder_id,
+            user_id,
+        )
+
+        return "Напоминание отключено."
+
     if action == "del":
-        await pool.execute("DELETE FROM reminders WHERE id=$1", rid)
+        await pool.execute(
+            """
+            DELETE FROM reminders
+            WHERE id = $1
+              AND user_id = $2
+            """,
+            reminder_id,
+            user_id,
+        )
+
         return "Напоминание удалено."
+
     if action == "snooze":
         later = datetime.now(timezone.utc) + timedelta(days=1)
-        await pool.execute("UPDATE reminders SET active=true, next_at=$2 WHERE id=$1", rid, later)
+
+        await pool.execute(
+            """
+            UPDATE reminders
+            SET active = TRUE,
+                next_at = $3
+            WHERE id = $1
+              AND user_id = $2
+            """,
+            reminder_id,
+            user_id,
+            later,
+        )
+
         return "Напомню завтра."
+
     if action in ("less", "more"):
-        rule = r["repeat_rule"]
+        rule = reminder["repeat_rule"]
+
         if not rule or not rule.startswith("days:"):
-            return "Частоту этого напоминания изменить нельзя, но его можно отключить."
-        n = int(rule.split(":")[1])
-        n = min(n * 2, 60) if action == "less" else max(n // 2, 1)
-        await pool.execute("UPDATE reminders SET repeat_rule=$2 WHERE id=$1", rid, f"days:{n}")
-        return f"Теперь напоминаю {human_rule(f'days:{n}')}."
+            return (
+                "Частоту этого напоминания изменить нельзя, "
+                "но его можно отключить."
+            )
+
+        try:
+            days = int(rule.split(":", 1)[1])
+        except (ValueError, IndexError):
+            return "Не удалось изменить частоту напоминания."
+
+        if action == "less":
+            days = min(days * 2, 60)
+        else:
+            days = max(days // 2, 1)
+
+        new_rule = f"days:{days}"
+
+        await pool.execute(
+            """
+            UPDATE reminders
+            SET repeat_rule = $3
+            WHERE id = $1
+              AND user_id = $2
+            """,
+            reminder_id,
+            user_id,
+            new_rule,
+        )
+
+        return f"Теперь напоминаю {human_rule(new_rule)}."
+
     return "Неизвестное действие."
 
 
 def _is_quiet(local: datetime) -> bool:
-    return local.hour >= settings.quiet_start or local.hour < settings.quiet_end
+    """Проверяет, попадает ли время в тихие часы."""
+    return (
+        local.hour >= settings.quiet_start
+        or local.hour < settings.quiet_end
+    )
 
 
 def _quiet_end(local: datetime) -> datetime:
-    end = local.replace(hour=settings.quiet_end, minute=0, second=0, microsecond=0)
+    """Возвращает ближайшее окончание тихих часов в UTC."""
+    end = local.replace(
+        hour=settings.quiet_end,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+
     if local.hour >= settings.quiet_start:
         end += timedelta(days=1)
+
     return end.astimezone(timezone.utc)
 
 
 async def _tick(bot) -> None:
+    """Проверяет и отправляет все напоминания, срок которых наступил."""
     now = datetime.now(timezone.utc)
-    async with db.pool().acquire() as conn:
+    pool = db.pool()
+
+    async with pool.acquire() as conn:
         async with conn.transaction():
             rows = await conn.fetch(
-                "SELECT r.*, u.chat_id, p.tz FROM reminders r "
-                "JOIN users u ON u.id = r.user_id "
-                "LEFT JOIN profiles p ON p.user_id = r.user_id "
-                "WHERE r.active AND r.next_at <= $1 "
-                "ORDER BY r.next_at LIMIT 50 FOR UPDATE OF r SKIP LOCKED",
+                """
+                SELECT
+                    r.*,
+                    u.chat_id,
+                    p.tz
+                FROM reminders AS r
+                JOIN users AS u
+                    ON u.id = r.user_id
+                LEFT JOIN profiles AS p
+                    ON p.user_id = r.user_id
+                WHERE r.active = TRUE
+                  AND r.next_at <= $1
+                ORDER BY r.next_at
+                LIMIT $2
+                FOR UPDATE OF r SKIP LOCKED
+                """,
                 now,
+                MAX_BATCH_SIZE,
             )
-            for r in rows:
-                local = now.astimezone(tz_of(r["tz"]))
-                if _is_quiet(local):
-                    await conn.execute("UPDATE reminders SET next_at=$2 WHERE id=$1", r["id"], _quiet_end(local))
+
+            for reminder in rows:
+                local_now = now.astimezone(tz_of(reminder["tz"]))
+
+                # Не отправляем сообщения в тихие часы.
+                if _is_quiet(local_now):
+                    await conn.execute(
+                        """
+                        UPDATE reminders
+                        SET next_at = $2
+                        WHERE id = $1
+                        """,
+                        reminder["id"],
+                        _quiet_end(local_now),
+                    )
                     continue
-                day_start = local.replace(hour=0, minute=0, second=0, microsecond=0)
+
+                # Ограничиваем количество уведомлений за локальные сутки.
+                day_start = local_now.replace(
+                    hour=0,
+                    minute=0,
+                    second=0,
+                    microsecond=0,
+                )
+
                 sent_today = await conn.fetchval(
-                    "SELECT count(*) FROM events WHERE user_id=$1 AND type='reminder_sent' AND created_at >= $2",
-                    r["user_id"], day_start,
+                    """
+                    SELECT count(*)
+                    FROM events
+                    WHERE user_id = $1
+                      AND type = 'reminder_sent'
+                      AND created_at >= $2
+                    """,
+                    reminder["user_id"],
+                    day_start.astimezone(timezone.utc),
                 )
+
                 if sent_today >= settings.max_reminders_per_day:
-                    tomorrow = (day_start + timedelta(days=1)).replace(hour=settings.quiet_end)
-                    await conn.execute("UPDATE reminders SET next_at=$2 WHERE id=$1",
-                                       r["id"], tomorrow.astimezone(timezone.utc))
+                    tomorrow = (
+                        day_start + timedelta(days=1)
+                    ).replace(
+                        hour=settings.quiet_end,
+                        minute=0,
+                        second=0,
+                        microsecond=0,
+                    )
+
+                    await conn.execute(
+                        """
+                        UPDATE reminders
+                        SET next_at = $2
+                        WHERE id = $1
+                        """,
+                        reminder["id"],
+                        tomorrow.astimezone(timezone.utc),
+                    )
                     continue
+
                 try:
-                    await bot.send_message(r["chat_id"], f"🔔 Напоминание: {r['text']}",
-                                           reply_markup=keyboard(r))
+                    await bot.send_message(
+                        chat_id=reminder["chat_id"],
+                        text=f"🔔 Напоминание: {reminder['text']}",
+                        reply_markup=keyboard(reminder),
+                    )
+
                 except TelegramForbiddenError:
-                    await conn.execute("UPDATE reminders SET active=false WHERE user_id=$1", r["user_id"])
+                    log.warning(
+                        "Пользователь %s заблокировал бота. "
+                        "Его напоминания отключены.",
+                        reminder["user_id"],
+                    )
+
+                    await conn.execute(
+                        """
+                        UPDATE reminders
+                        SET active = FALSE
+                        WHERE user_id = $1
+                        """,
+                        reminder["user_id"],
+                    )
                     continue
+
                 except Exception:
-                    log.exception("Не удалось отправить напоминание %s", r["id"])
+                    log.exception(
+                        "Не удалось отправить напоминание id=%s",
+                        reminder["id"],
+                    )
+                    # Не меняем next_at: после ошибки попробуем снова
+                    # на следующем цикле планировщика.
                     continue
+
                 await conn.execute(
-                    "INSERT INTO events(user_id, type, payload) VALUES($1,'reminder_sent',$2::jsonb)",
-                    r["user_id"], json.dumps({"reminder_id": r["id"]}),
+                    """
+                    INSERT INTO events (
+                        user_id,
+                        type,
+                        payload
+                    )
+                    VALUES (
+                        $1,
+                        'reminder_sent',
+                        $2::jsonb
+                    )
+                    """,
+                    reminder["user_id"],
+                    json.dumps(
+                        {"reminder_id": reminder["id"]},
+                        ensure_ascii=False,
+                    ),
                 )
-                if r["repeat_rule"]:
-                    nxt = advance(r["next_at"], r["repeat_rule"])
-                    while nxt <= now:
-                        nxt = advance(nxt, r["repeat_rule"])
-                    await conn.execute("UPDATE reminders SET next_at=$2 WHERE id=$1", r["id"], nxt)
+
+                if reminder["repeat_rule"]:
+                    try:
+                        next_time = advance(
+                            reminder["next_at"],
+                            reminder["repeat_rule"],
+                        )
+
+                        while next_time <= now:
+                            next_time = advance(
+                                next_time,
+                                reminder["repeat_rule"],
+                            )
+
+                    except (ValueError, TypeError):
+                        log.exception(
+                            "Некорректное правило повторения у напоминания %s",
+                            reminder["id"],
+                        )
+
+                        await conn.execute(
+                            """
+                            UPDATE reminders
+                            SET active = FALSE
+                            WHERE id = $1
+                            """,
+                            reminder["id"],
+                        )
+                        continue
+
+                    await conn.execute(
+                        """
+                        UPDATE reminders
+                        SET next_at = $2
+                        WHERE id = $1
+                        """,
+                        reminder["id"],
+                        next_time,
+                    )
+
                 else:
-                    await conn.execute("UPDATE reminders SET active=false WHERE id=$1", r["id"])
+                    # Разовое напоминание после успешной отправки отключается.
+                    await conn.execute(
+                        """
+                        UPDATE reminders
+                        SET active = FALSE
+                        WHERE id = $1
+                        """,
+                        reminder["id"],
+                    )
 
 
 async def loop(bot) -> None:
+    """Фоновый цикл планировщика."""
+    log.info(
+        "Планировщик напоминаний запущен. Интервал проверки: %s сек.",
+        CHECK_INTERVAL_SECONDS,
+    )
+
     while True:
         try:
             await _tick(bot)
+
         except asyncio.CancelledError:
+            log.info("Планировщик напоминаний остановлен.")
             raise
+
         except Exception:
             log.exception("Ошибка цикла напоминаний")
-        await asyncio.sleep(30)
+
+        await asyncio.sleep(CHECK_INTERVAL_SECONDS)

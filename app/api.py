@@ -1,5 +1,5 @@
 
-"""HTTP API для Telegram Mini App. Авторизация только через подписанный Telegram initData."""
+"""HTTP API для Telegram Mini App. Авторизация через подписанный Telegram initData."""
 
 import asyncio
 import hashlib
@@ -11,12 +11,12 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from urllib.parse import parse_qsl
 from uuid import UUID
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram import Bot, Dispatcher
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from . import db, dialog, recs, reminders, search
 from .config import settings
@@ -37,8 +37,8 @@ def telegram_user(init_data: str) -> dict:
     except (ValueError, KeyError):
         raise HTTPException(401, "Некорректные данные Telegram")
 
-    # Не принимаем данные, созданные в будущем или старше 24 часов.
     now = int(time.time())
+
     if auth_date > now + 60 or now - auth_date > 86400:
         raise HTTPException(
             401,
@@ -46,7 +46,8 @@ def telegram_user(init_data: str) -> dict:
         )
 
     check_string = "\n".join(
-        f"{k}={v}" for k, v in sorted(values.items())
+        f"{key}={value}"
+        for key, value in sorted(values.items())
     )
 
     secret = hmac.new(
@@ -69,7 +70,7 @@ def telegram_user(init_data: str) -> dict:
 
     try:
         user = json.loads(values["user"])
-        uid = int(user["id"])
+        user_id = int(user["id"])
     except (KeyError, ValueError, TypeError, json.JSONDecodeError):
         raise HTTPException(
             401,
@@ -77,7 +78,7 @@ def telegram_user(init_data: str) -> dict:
         )
 
     return {
-        "id": uid,
+        "id": user_id,
         "first_name": user.get("first_name", ""),
         "username": user.get("username"),
     }
@@ -109,16 +110,13 @@ async def lifespan(app: FastAPI):
     polling_task = None
 
     try:
-        # Для работы через polling webhook должен быть отключён.
         await bot.delete_webhook(drop_pending_updates=True)
 
-        # Запускаем цикл напоминаний.
         reminder_task = asyncio.create_task(
             reminders.loop(bot),
             name="reminders-loop",
         )
 
-        # Запускаем Telegram-бота в фоне.
         polling_task = asyncio.create_task(
             dp.start_polling(
                 bot,
@@ -161,9 +159,9 @@ app = FastAPI(
 )
 
 allowed_origins = [
-    x.strip()
-    for x in settings.miniapp_origins.split(",")
-    if x.strip()
+    origin.strip()
+    for origin in settings.miniapp_origins.split(",")
+    if origin.strip()
 ]
 
 app.add_middleware(
@@ -200,12 +198,67 @@ class ProfileRequest(BaseModel):
 
 class ReminderRequest(BaseModel):
     text: str = Field(min_length=1, max_length=300)
-    date: str
+    date: str = Field(min_length=16, max_length=50)
     repeat: str = "none"
+
+    @field_validator("text")
+    @classmethod
+    def validate_text(cls, value: str) -> str:
+        value = value.strip()
+
+        if not value:
+            raise ValueError("Введите текст напоминания")
+
+        return value
+
+    @field_validator("repeat")
+    @classmethod
+    def validate_repeat(cls, value: str) -> str:
+        allowed = {
+            "Не повторять",
+            "none",
+            "Каждый день",
+            "daily",
+            "Каждую неделю",
+            "weekly",
+            "Каждый месяц",
+            "monthly",
+            "Каждый год",
+            "yearly",
+        }
+
+        if value not in allowed:
+            raise ValueError("Неизвестная периодичность")
+
+        return value
 
 
 class MaterialClickRequest(BaseModel):
     material_id: UUID
+
+
+def parse_reminder_datetime(value: str, tz: ZoneInfo) -> datetime:
+    """Проверяет дату и время и возвращает timezone-aware datetime."""
+    try:
+        parsed = datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            422,
+            "Некорректная дата или время. Проверьте день, месяц, год и время.",
+        )
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=tz)
+
+    now = datetime.now(tz)
+
+    if parsed <= now:
+        raise HTTPException(
+            422,
+            "Нельзя создать напоминание на прошедшую дату или время.",
+        )
+
+    return parsed.astimezone(timezone.utc)
 
 
 @app.get("/health")
@@ -236,15 +289,18 @@ async def put_profile(
     if data.get("tz"):
         try:
             ZoneInfo(data["tz"])
-        except Exception:
-            raise HTTPException(422, "Некорректный часовой пояс")
+        except (ZoneInfoNotFoundError, ValueError, TypeError):
+            raise HTTPException(
+                422,
+                "Некорректный часовой пояс. Выберите часовой пояс из списка.",
+            )
 
     await db.update_profile(user["id"], **data)
 
     await db.log_event(
         user["id"],
         "miniapp_profile_updated",
-        {k: v for k, v in data.items() if v},
+        {key: value for key, value in data.items() if value},
     )
 
     return await db.get_profile(user["id"])
@@ -255,19 +311,24 @@ async def chat(
     payload: ChatRequest,
     user: dict = Depends(current_user),
 ):
+    message = payload.message.strip()
+
+    if not message:
+        raise HTTPException(422, "Введите сообщение")
+
     answer, _buttons = await dialog.respond(
         user["id"],
-        payload.message.strip(),
+        message,
     )
 
     profile = await db.get_profile(user["id"])
-    found = await search.materials(payload.message.strip())
+    found = await search.materials(message)
     materials = recs.rank(found, profile, top=3)
 
     await db.log_event(
         user["id"],
         "miniapp_message",
-        {"length": len(payload.message)},
+        {"length": len(message)},
     )
 
     return {
@@ -275,18 +336,24 @@ async def chat(
         "no_answer": "не нашёл надёжного ответа" in answer.lower(),
         "materials": [
             {
-                "id": str(m["id"]),
-                "title": m["title"],
+                "id": str(material["id"]),
+                "title": material["title"],
                 "description": (
-                    m.get("description") if not m.get("is_paid") else None
+                    material.get("description")
+                    if not material.get("is_paid")
+                    else None
                 ),
-                "url": link(m.get("url")) if m.get("url") else None,
-                "is_paid": m.get("is_paid", False),
-                "price": m.get("price"),
-                "topic": m.get("topic"),
-                "reasons": m.get("reasons", []),
+                "url": (
+                    link(material.get("url"))
+                    if material.get("url")
+                    else None
+                ),
+                "is_paid": material.get("is_paid", False),
+                "price": material.get("price"),
+                "topic": material.get("topic"),
+                "reasons": material.get("reasons", []),
             }
-            for m in materials
+            for material in materials
         ],
     }
 
@@ -297,7 +364,7 @@ async def history(user: dict = Depends(current_user)):
         """
         SELECT role, content, created_at
         FROM messages
-        WHERE user_id=$1
+        WHERE user_id = $1
         ORDER BY created_at DESC, id DESC
         LIMIT 40
         """,
@@ -307,11 +374,11 @@ async def history(user: dict = Depends(current_user)):
     return {
         "items": [
             {
-                "role": r["role"],
-                "text": r["content"],
-                "created_at": r["created_at"].isoformat(),
+                "role": row["role"],
+                "text": row["content"],
+                "created_at": row["created_at"].isoformat(),
             }
-            for r in reversed(rows)
+            for row in reversed(rows)
         ]
     }
 
@@ -344,19 +411,25 @@ async def get_materials(
     return {
         "items": [
             {
-                "id": str(m["id"]),
-                "title": m["title"],
+                "id": str(material["id"]),
+                "title": material["title"],
                 "description": (
-                    m.get("description") if not m.get("is_paid") else None
+                    material.get("description")
+                    if not material.get("is_paid")
+                    else None
                 ),
-                "topic": m.get("topic"),
-                "format": m.get("format"),
-                "is_paid": m.get("is_paid", False),
-                "price": m.get("price"),
-                "url": link(m.get("url")) if m.get("url") else None,
-                "reasons": m.get("reasons", []),
+                "topic": material.get("topic"),
+                "format": material.get("format"),
+                "is_paid": material.get("is_paid", False),
+                "price": material.get("price"),
+                "url": (
+                    link(material.get("url"))
+                    if material.get("url")
+                    else None
+                ),
+                "reasons": material.get("reasons", []),
             }
-            for m in items
+            for material in items
         ]
     }
 
@@ -371,13 +444,13 @@ async def material_click(
         SELECT EXISTS(
             SELECT 1
             FROM kb.materials
-            WHERE id=$1::uuid
+            WHERE id = $1::uuid
               AND is_recommendable
               AND is_closed IS NOT TRUE
               AND (
                   (access = 'free' AND url_confirmed IS TRUE AND url IS NOT NULL)
                   OR
-                  (access IN ('paid','subscription') AND buy_url IS NOT NULL)
+                  (access IN ('paid', 'subscription') AND buy_url IS NOT NULL)
               )
         )
         """,
@@ -402,26 +475,25 @@ async def get_reminders(user: dict = Depends(current_user)):
         """
         SELECT id, text, next_at, repeat_rule, active
         FROM reminders
-        WHERE user_id=$1
+        WHERE user_id = $1
         ORDER BY active DESC, next_at
         """,
         user["id"],
     )
 
-    tz = reminders.tz_of(
-        (await db.get_profile(user["id"])).get("tz")
-    )
+    profile = await db.get_profile(user["id"])
+    tz = reminders.tz_of(profile.get("tz"))
 
     return {
         "items": [
             {
-                "id": r["id"],
-                "text": r["text"],
-                "next_at": r["next_at"].astimezone(tz).isoformat(),
-                "repeat_rule": r["repeat_rule"],
-                "active": r["active"],
+                "id": row["id"],
+                "text": row["text"],
+                "next_at": row["next_at"].astimezone(tz).isoformat(),
+                "repeat_rule": row["repeat_rule"],
+                "active": row["active"],
             }
-            for r in rows
+            for row in rows
         ]
     }
 
@@ -434,17 +506,7 @@ async def post_reminder(
     profile = await db.get_profile(user["id"])
     tz = reminders.tz_of(profile.get("tz"))
 
-    try:
-        d = datetime.fromisoformat(payload.date)
-
-        if d.tzinfo is None:
-            d = d.replace(tzinfo=tz)
-
-        if d <= datetime.now(tz):
-            raise ValueError
-
-    except ValueError:
-        raise HTTPException(422, "Укажите будущую дату")
+    next_at = parse_reminder_datetime(payload.date, tz)
 
     rule_map = {
         "Не повторять": None,
@@ -459,29 +521,29 @@ async def post_reminder(
         "yearly": "yearly",
     }
 
-    if payload.repeat not in rule_map:
-        raise HTTPException(422, "Неизвестная периодичность")
-
-    rid = await reminders.create(
+    reminder_id = await reminders.create(
         user["id"],
         payload.text,
-        d.astimezone(timezone.utc),
+        next_at,
         rule_map[payload.repeat],
     )
 
-    if rid is None:
+    if reminder_id is None:
         raise HTTPException(
             409,
-            "Достигнут лимит активных напоминаний",
+            "Достигнут лимит активных напоминаний.",
         )
 
     await db.log_event(
         user["id"],
         "reminder_created_miniapp",
-        {"id": rid},
+        {"id": reminder_id},
     )
 
-    return {"id": rid, "ok": True}
+    return {
+        "id": reminder_id,
+        "ok": True,
+    }
 
 
 @app.patch("/api/reminders/{reminder_id}")
@@ -491,7 +553,12 @@ async def patch_reminder(
     user: dict = Depends(current_user),
 ):
     result = await db.pool().execute(
-        "UPDATE reminders SET active=$3 WHERE id=$1 AND user_id=$2",
+        """
+        UPDATE reminders
+        SET active = $3
+        WHERE id = $1
+          AND user_id = $2
+        """,
         reminder_id,
         user["id"],
         active,
@@ -509,7 +576,11 @@ async def delete_reminder(
     user: dict = Depends(current_user),
 ):
     result = await db.pool().execute(
-        "DELETE FROM reminders WHERE id=$1 AND user_id=$2",
+        """
+        DELETE FROM reminders
+        WHERE id = $1
+          AND user_id = $2
+        """,
         reminder_id,
         user["id"],
     )
