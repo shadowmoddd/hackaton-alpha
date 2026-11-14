@@ -730,9 +730,14 @@ export default function App() {
 
                         {asArray<Material>(m.materials).length > 0 && (
                           <div className="chat-materials">
-                            {asArray<Material>(m.materials).slice(0, 2).map(item => (
+                            {asArray<Material>(m.materials).map(item => (
                               <div className="chat-material-card" key={item.id}>
-                                <b>{item.title}</b>
+                                <b>{item.is_paid ? '💳' : '🆓'} {item.title}</b>
+                                <small>
+                                  {item.is_paid
+                                    ? `Польза: ${item.topic || 'материал по выбранной теме'}${item.price ? ` · ${item.price}` : ''}`
+                                    : item.description || 'Бесплатный материал'}
+                                </small>
                                 {item.url ? (
                                   <button
                                     type="button"
@@ -742,7 +747,7 @@ export default function App() {
                                     Открыть материал <ArrowRight size={15} />
                                   </button>
                                 ) : (
-                                  <small>Ссылка пока не указана</small>
+                                  <small>Прямая ссылка пока не указана в каталоге.</small>
                                 )}
                               </div>
                             ))}
@@ -940,11 +945,19 @@ export default function App() {
               </div>
             ) : (
               <div className="reminder-list">
-                {materials.slice(0, 2).map(m => (
+                {materials.map(m => (
                   <article className="reminder-card" key={m.id}>
                     <div className="reminder-symbol"><BookOpen size={19} /></div>
                     <div className="reminder-content">
                       <b>{m.title}</b>
+                      <span>
+                        {m.topic || m.format || 'Материал Альфа-Курса'} ·
+                        {m.is_paid ? ` Платный${m.price ? ` · ${m.price}` : ''}` : ' Бесплатный'}
+                      </span>
+                      {m.description && <small>{m.description}</small>}
+                      {asArray<string>(m.reasons).length > 0 && (
+                        <small>{asArray<string>(m.reasons).join(' · ')}</small>
+                      )}
                     </div>
                     <div className="material-card-action">
                       {m.url ? (
