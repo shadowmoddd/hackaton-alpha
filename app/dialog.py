@@ -52,7 +52,8 @@ ANSWER_SYSTEM = """
 6. Пиши по-русски, понятно, дружелюбно и без канцелярита.
 7. Обычно достаточно 3–6 предложений.
 8. Если вопрос предполагает инструкцию, используй короткие шаги.
-9. Не добавляй ссылки и не рекламируй курсы.
+9. Не выдумывай и не вставляй ссылки самостоятельно.
+   Ссылки на материалы будут добавлены программой отдельно.
 10. Учитывай профиль пользователя, если он относится к вопросу.
 11. Не повторяй вопрос пользователя.
 12. В конце добавь одну строку:
@@ -91,6 +92,7 @@ def profile_text(profile: dict) -> str:
 
 
 def _mat_lines(mats: list[dict]) -> str:
+    """Формирует описание материалов вместе с настоящими URL из каталога."""
     lines = []
 
     for material in mats:
@@ -117,16 +119,23 @@ def _mat_lines(mats: list[dict]) -> str:
             line += f", {material['price']}"
 
         description = material.get("description")
-        if description and not is_paid:
-            line += f"\n  {str(description).strip()[:180]}"
+        if description:
+            line += f"\n  {str(description).strip()[:250]}"
 
         reasons = material.get("reasons")
         if reasons:
             line += "\n  Почему подходит: " + "; ".join(reasons)
 
+        url = material.get("url")
+
+        if is_url(url):
+            line += f"\n  🔗 Ссылка: {url}"
+        else:
+            line += "\n  ⚠️ Прямая ссылка в каталоге не указана"
+
         lines.append(line)
 
-    return "\n".join(lines)
+    return "\n\n".join(lines)
 
 
 def _mat_buttons(mats: list[dict]) -> list[list[dict]]:

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+
+import { useEffect, useRef, useState } from 'react'
 import {
   ArrowRight, ArrowUp, Bell, BookOpen, BriefcaseBusiness, CalendarClock,
   Check, ChevronRight, Clock3, Home, MessageCircle, Plus, Send,
@@ -381,8 +382,24 @@ export default function App() {
   }
 
   async function openMaterial(item: Material) {
-    if (!item.url) {
-      setNotice('Для этого материала ссылка пока не подтверждена')
+    const rawUrl = item.url?.trim()
+
+    if (!rawUrl) {
+      setNotice('Для этого материала прямая ссылка пока не указана')
+      return
+    }
+
+    let targetUrl: URL
+
+    try {
+      targetUrl = new URL(rawUrl)
+    } catch {
+      setNotice('У материала некорректная ссылка')
+      return
+    }
+
+    if (targetUrl.protocol !== 'https:' && targetUrl.protocol !== 'http:') {
+      setNotice('Можно открыть только веб-ссылку')
       return
     }
 
@@ -392,13 +409,13 @@ export default function App() {
         body: JSON.stringify({ material_id: item.id })
       })
     } catch {
-      // Аналитика необязательна для перехода по ссылке.
+      // Ошибка аналитики не должна блокировать переход.
     }
 
     if (window.Telegram?.WebApp) {
-      window.Telegram.WebApp.openLink(item.url)
+      window.Telegram.WebApp.openLink(targetUrl.toString())
     } else {
-      window.open(item.url, '_blank', 'noopener,noreferrer')
+      window.open(targetUrl.toString(), '_blank', 'noopener,noreferrer')
     }
   }
 
@@ -714,21 +731,25 @@ export default function App() {
                         {asArray<Material>(m.materials).length > 0 && (
                           <div className="chat-materials">
                             {asArray<Material>(m.materials).map(item => (
-                              <a
-                                key={item.id}
-                                href={item.url || '#'}
-                                onClick={e => {
-                                  e.preventDefault()
-                                  void openMaterial(item)
-                                }}
-                              >
+                              <div className="chat-material-card" key={item.id}>
                                 <b>{item.is_paid ? '💳' : '🆓'} {item.title}</b>
                                 <small>
                                   {item.is_paid
                                     ? `Польза: ${item.topic || 'материал по выбранной теме'}${item.price ? ` · ${item.price}` : ''}`
                                     : item.description || 'Бесплатный материал'}
                                 </small>
-                              </a>
+                                {item.url ? (
+                                  <button
+                                    type="button"
+                                    className="text-action"
+                                    onClick={() => void openMaterial(item)}
+                                  >
+                                    Открыть материал <ArrowRight size={15} />
+                                  </button>
+                                ) : (
+                                  <small>Прямая ссылка пока не указана в каталоге.</small>
+                                )}
+                              </div>
                             ))}
                           </div>
                         )}
@@ -938,11 +959,19 @@ export default function App() {
                         <small>{asArray<string>(m.reasons).join(' · ')}</small>
                       )}
                     </div>
-                    {m.url && (
-                      <button className="icon-button" onClick={() => void openMaterial(m)} aria-label="Открыть материал">
-                        <ChevronRight size={16} />
-                      </button>
-                    )}
+                    <div className="material-card-action">
+                      {m.url ? (
+                        <button
+                          type="button"
+                          className="text-action"
+                          onClick={() => void openMaterial(m)}
+                        >
+                          Открыть <ArrowRight size={15} />
+                        </button>
+                      ) : (
+                        <small>Ссылка не указана</small>
+                      )}
+                    </div>
                   </article>
                 ))}
               </div>

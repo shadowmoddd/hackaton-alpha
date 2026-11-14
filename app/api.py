@@ -37,7 +37,9 @@ def telegram_user(init_data: str) -> dict:
     except (ValueError, KeyError):
         raise HTTPException(401, "Некорректные данные Telegram")
 
-    if abs(time.time() - auth_date) > 86400:
+    # Не принимаем данные, созданные в будущем или старше 24 часов.
+    now = int(time.time())
+    if auth_date > now + 60 or now - auth_date > 86400:
         raise HTTPException(
             401,
             "Сессия Telegram устарела. Перезапустите Mini App",
@@ -194,6 +196,7 @@ class ProfileRequest(BaseModel):
     experience: str | None = None
     goal: str | None = None
     tz: str | None = None
+
 
 class ReminderRequest(BaseModel):
     text: str = Field(min_length=1, max_length=300)
