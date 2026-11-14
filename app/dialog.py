@@ -1,550 +1,247 @@
-
 """Логика диалога Skilly / Альфа-Курс."""
 
+import html
 import logging
+import re
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 
 from . import analyze, db, llm, recs, reminders, search
 from .config import settings
 from .util import is_url, link
 
-
 log = logging.getLogger(__name__)
-
 Reply = tuple[str, list[list[dict]] | None]
 
-
-STAGE_RU = {
-    "idea": "думает об открытии",
-    "launch": "запускает дело",
-    "running": "бизнес работает",
-    "growing": "развивает бизнес",
-}
-
-REGIME_RU = {
-    "usn": "УСН",
-    "npd": "НПД (самозанятый)",
-    "osno": "ОСНО",
-    "patent": "патент",
-    "other": "другой",
-}
-
-EXPERIENCE_RU = {
-    "novice": "начинающий",
-    "some": "есть некоторый опыт",
-    "experienced": "опытный",
-}
-
+STAGE_RU = {"idea": "думает об открытии", "launch": "запускает дело", "running": "бизнес работает", "growing": "развивает бизнес"}
+REGIME_RU = {"usn": "УСН", "npd": "НПД (самозанятый)", "osno": "ОСНО", "patent": "патент", "other": "другой"}
+EXPERIENCE_RU = {"novice": "начинающий", "some": "есть некоторый опыт", "experienced": "опытный"}
 
 ANSWER_SYSTEM = """
-Ты — образовательный ИИ-помощник платформы «Альфа-Курс»
-для начинающих предпринимателей и владельцев малого бизнеса.
-
-Отвечай на вопрос пользователя ТОЛЬКО на основании переданных фрагментов
-базы знаний.
-
-Правила:
-1. Не используй знания из собственной памяти вместо базы знаний.
-2. Не выдумывай факты, цифры, суммы, сроки, ставки и требования закона.
-3. Если фрагменты не содержат ответа, верни ровно НЕТ_ОТВЕТА.
-4. Не делай выводов, которые не подтверждаются фрагментами.
-5. Отвечай непосредственно на вопрос, а не пересказывай все фрагменты.
-6. Пиши по-русски, понятно, дружелюбно и без канцелярита.
-7. Обычно достаточно 3–6 предложений.
-8. Если вопрос предполагает инструкцию, используй короткие шаги.
-9. Не выдумывай и не вставляй ссылки самостоятельно.
-   Ссылки на материалы будут добавлены программой отдельно.
-10. Учитывай профиль пользователя, если он относится к вопросу.
-11. Не повторяй вопрос пользователя.
-12. В конце добавь одну строку:
-Следующий шаг: конкретное действие пользователя.
-
-Если информации недостаточно, верни НЕТ_ОТВЕТА.
+Ты — практичный ИИ-помощник платформы «Альфа-Курс» для предпринимателей.
+Отвечай строго по вопросу пользователя и по переданным фрагментам базы знаний.
+Не выдумывай факты, цифры, ставки, сроки, нормы закона и ссылки.
+Пиши по-русски, просто и естественно. Сначала дай прямой ответ.
+Обычно достаточно 2–5 коротких предложений.
+Не повторяй вопрос, не начинай с общих фраз, не добавляй обязательные заголовки,
+чек-листы, выводы или фразу «Следующий шаг».
+Список используй только если он действительно упрощает инструкцию.
+Не используй эмодзи, декоративные символы, HTML, Markdown, таблицы и формулы.
+Не добавляй ссылки на материалы: они будут показаны отдельно.
+Учитывай профиль только если он относится к вопросу.
+Если контекст не отвечает на вопрос, верни ровно НЕТ_ОТВЕТА.
+Если важной детали не хватает, задай один короткий уточняющий вопрос.
+Для налоговых, юридических и финансовых тем не делай категоричных выводов,
+если переданные фрагменты не подтверждают их явно.
 """
 
+class _PlainTextParser(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts = []
+    def handle_data(self, data):
+        value = data.strip()
+        if value:
+            self.parts.append(value)
 
-def profile_text(profile: dict) -> str:
+def plain_text(value, limit=None):
+    if value is None:
+        return ""
+    raw = html.unescape(str(value))
+    parser = _PlainTextParser()
+    try:
+        parser.feed(raw)
+        parser.close()
+        result = " ".join(parser.parts)
+    except Exception:
+        result = re.sub(r"<[^>]*>", " ", raw)
+    result = re.sub(r"\s+", " ", html.unescape(result)).strip()
+    return result[:limit].rstrip() if limit else result
+
+def clean_answer(value):
+    value = plain_text(value)
+    value = re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", value)
+    value = re.sub(r"\*\*(.*?)\*\*", r"\1", value)
+    value = re.sub(r"__(.*?)__", r"\1", value)
+    value = re.sub(r"`([^`]*)`", r"\1", value)
+    value = re.sub(r"[📚🔗🆓💳⚠️🚀👉✅❗️⭐️]+", "", value)
+    value = re.sub(r"\n{3,}", "\n\n", value)
+    return value.strip()
+
+def profile_text(profile):
     parts = []
-
-    stage = profile.get("stage")
-    if stage:
-        parts.append(f"стадия: {STAGE_RU.get(stage, stage)}")
-
-    area = profile.get("area")
-    if area:
-        parts.append(f"сфера: {area}")
-
-    regime = profile.get("tax_regime")
-    if regime:
-        parts.append(f"налогообложение: {REGIME_RU.get(regime, regime)}")
-
-    experience = profile.get("experience")
-    if experience:
-        parts.append(
-            f"опыт: {EXPERIENCE_RU.get(experience, experience)}"
-        )
-
-    goal = profile.get("goal")
-    if goal:
-        parts.append(f"задача: {goal}")
-
+    for key, label, mapping in (
+        ("stage", "стадия", STAGE_RU),
+        ("area", "сфера", {}),
+        ("tax_regime", "налогообложение", REGIME_RU),
+        ("experience", "опыт", EXPERIENCE_RU),
+        ("goal", "задача", {}),
+    ):
+        value = profile.get(key)
+        if value:
+            parts.append(f"{label}: {mapping.get(value, value)}")
     return "; ".join(parts) if parts else "неизвестен"
 
-
-def _mat_lines(mats: list[dict]) -> str:
-    """Формирует описание материалов вместе с настоящими URL из каталога."""
-    lines = []
-
+def _eligible_linked_materials(mats):
+    result, seen = [], set()
     for material in mats:
-        title = material.get("title") or "Материал без названия"
-        is_paid = bool(material.get("is_paid"))
-
-        tag = "💳 платный" if is_paid else "🆓 бесплатный"
-
-        meta = [
-            value
-            for value in (
-                material.get("format"),
-                material.get("level"),
-            )
-            if value
-        ]
-
-        line = f"• {title} — {tag}"
-
-        if meta:
-            line += ", " + " · ".join(meta)
-
-        if is_paid and material.get("price"):
-            line += f", {material['price']}"
-
-        description = material.get("description")
-        if description:
-            line += f"\n  {str(description).strip()[:250]}"
-
-        reasons = material.get("reasons")
-        if reasons:
-            line += "\n  Почему подходит: " + "; ".join(reasons)
-
         url = material.get("url")
+        title = plain_text(material.get("title"), 120)
+        if not title or not is_url(url):
+            continue
+        key = str(material.get("id") or url)
+        if key in seen:
+            continue
+        seen.add(key)
+        item = dict(material)
+        item["title"] = title
+        item["description"] = plain_text(item.get("description"), 240)
+        result.append(item)
+        if len(result) == 2:
+            break
+    return result
 
-        if is_url(url):
-            line += f"\n  🔗 Ссылка: {url}"
-        else:
-            line += "\n  ⚠️ Прямая ссылка в каталоге не указана"
+def _mat_lines(mats):
+    return "\n\n".join(
+        f"{plain_text(m.get('title'), 120)}\n{m['url']}"
+        for m in _eligible_linked_materials(mats)
+    )
 
-        lines.append(line)
-
-    return "\n\n".join(lines)
-
-
-def _mat_buttons(mats: list[dict]) -> list[list[dict]]:
+def _mat_buttons(mats):
     rows = []
+    for material in _eligible_linked_materials(mats):
+        rows.append([{"text": plain_text(material.get("title"), 45) or "Открыть материал", "url": link(material["url"])}])
+    return rows or None
 
-    for material in mats:
-        url = material.get("url")
-        title = material.get("title") or "Открыть материал"
+def _no_answer():
+    return ("В доступной базе знаний нет точной информации для ответа. Уточните, пожалуйста, какой именно аспект вас интересует.", None)
 
-        if is_url(url):
-            prefix = "💳 " if material.get("is_paid") else "🆓 "
+def _no_recommendations():
+    return ("Не нашёл в каталоге материалов, которые достаточно точно подходят под эту задачу.", None)
 
-            rows.append([
-                {
-                    "text": (prefix + title)[:50],
-                    "url": link(url),
-                }
-            ])
-
-    # Кнопку напоминания добавляем только при наличии корректного ID.
-    if mats and mats[0].get("id"):
-        rows.append([
-            {
-                "text": "🔔 Напомнить вернуться к первому материалу",
-                "callback_data": f"learn:{mats[0]['id']}",
-            }
-        ])
-
-    return rows
-
-
-def _no_answer() -> Reply:
-    return (
-        "Я пока не нашёл в базе знаний достаточно точной информации, "
-        "чтобы уверенно ответить на этот вопрос. Не хочу вводить вас "
-        "в заблуждение.\n\n"
-        "Попробуйте уточнить тему или сформулировать вопрос конкретнее. "
-        "Например: «Как выбрать систему налогообложения для самозанятого?»",
-        None,
-    )
-
-
-def _no_recommendations() -> Reply:
-    return (
-        "Пока не нашёл в каталоге материалов достаточно точных совпадений "
-        "с вашей задачей.\n\n"
-        "Попробуйте описать, что именно хотите сделать или чему научиться. "
-        "Например: «Хочу найти первых клиентов для кофейни».",
-        None,
-    )
-
-
-async def _answer(
-    user_id: int,
-    text: str,
-    analysis: dict,
-    profile: dict,
-) -> Reply:
-    """Отвечает по базе знаний и автоматически прикрепляет материалы."""
-
+async def _answer(user_id, text, analysis, profile):
     query = (analysis.get("search_query") or text).strip()
-
     try:
         chunks = await search.kb(query, limit=8)
     except Exception:
         log.exception("Knowledge search failed for user %s", user_id)
-        await db.log_event(
-            user_id,
-            "search_error",
-            {"query": query[:200]},
-        )
+        await db.log_event(user_id, "search_error", {"query": query[:200]})
         return _no_answer()
 
-    best_score = (
-        float(chunks[0].get("score") or 0)
-        if chunks else 0.0
-    )
-
+    best_score = float(chunks[0].get("score") or 0) if chunks else 0.0
     if not chunks or best_score < settings.kb_min_score:
-        await db.log_event(
-            user_id,
-            "no_answer",
-            {
-                "query": text[:200],
-                "search_query": query[:200],
-                "best_score": round(best_score, 4),
-            },
-        )
+        await db.log_event(user_id, "no_answer", {"query": text[:200], "search_query": query[:200], "best_score": round(best_score, 4)})
         return _no_answer()
 
     context_parts = []
-
     for index, chunk in enumerate(chunks[:5], start=1):
-        title = chunk.get("title") or "Без названия"
-        content = chunk.get("text") or ""
-
-        if content.strip():
-            context_parts.append(
-                f"[Фрагмент {index}]\n"
-                f"Материал: {title}\n"
-                f"Текст: {content[:3500]}"
-            )
-
+        title = plain_text(chunk.get("title")) or "Без названия"
+        content = plain_text(chunk.get("text"))
+        if content:
+            context_parts.append(f"[Фрагмент {index}]\nМатериал: {title}\nТекст: {content[:3500]}")
     if not context_parts:
         return _no_answer()
-
-    context = "\n\n".join(context_parts)
 
     prompt = (
         f"Профиль пользователя: {profile_text(profile)}\n\n"
         f"Вопрос пользователя: {text[:2000]}\n\n"
-        f"Фрагменты базы знаний:\n{context}\n\n"
-        "Ответь на вопрос строго по фрагментам базы знаний. "
-        "Пиши дружелюбно, как опытный наставник. "
-        "Сначала дай прямой ответ, затем при необходимости "
-        "короткий список конкретных действий. "
-        "Не перегружай ответ терминами. "
-        "В конце предложи один логичный следующий шаг. "
-        "Не выдумывай ссылки: материалы будут прикреплены отдельно."
+        f"Фрагменты базы знаний:\n{chr(10).join(context_parts)}\n\n"
+        "Дай прямой и короткий ответ именно на вопрос. Используй только факты "
+        "из фрагментов. Не добавляй общие советы, которых пользователь не просил. "
+        "Не добавляй следующий шаг, вступление или заключение. Если фрагменты "
+        "не отвечают на вопрос, верни НЕТ_ОТВЕТА."
     )
-
     try:
-        answer = await llm.chat(
-            ANSWER_SYSTEM,
-            prompt,
-            temperature=0.2,
-            max_tokens=800,
-        )
+        answer = await llm.chat(ANSWER_SYSTEM, prompt, temperature=0.1, max_tokens=500)
     except Exception:
         log.exception("Answer generation failed for user %s", user_id)
-        await db.log_event(
-            user_id,
-            "answer_generation_error",
-            {"query": text[:200]},
-        )
+        await db.log_event(user_id, "answer_generation_error", {"query": text[:200]})
         return _no_answer()
 
-    answer = (answer or "").strip()
-
-    if not answer or answer.upper() == "НЕТ_ОТВЕТА":
-        await db.log_event(
-            user_id,
-            "no_answer",
-            {
-                "query": text[:200],
-                "best_score": round(best_score, 4),
-                "reason": "llm_no_answer",
-            },
-        )
+    answer = clean_answer(answer or "")
+    if not answer or answer.upper().strip(" .!`") == "НЕТ_ОТВЕТА":
+        await db.log_event(user_id, "no_answer", {"query": text[:200], "best_score": round(best_score, 4), "reason": "llm_no_answer"})
         return _no_answer()
 
-    # Подбираем материалы по той же теме, что и ответ.
-    # Ошибка поиска материалов не должна уничтожать сам ответ.
     materials = []
-
     try:
         found = await search.materials(query, limit=20)
-        materials = recs.rank(found, profile, top=3)
+        materials = _eligible_linked_materials(recs.rank(found, profile, top=2))
     except Exception:
         log.exception("Material search failed for user %s", user_id)
 
     output = answer
-
     if materials:
-        output += (
-            "\n\n📚 Материалы по вашей теме:\n\n"
-            + _mat_lines(materials)
-        )
+        output += "\n\nМатериалы:\n" + _mat_lines(materials)
+    await db.log_event(user_id, "answer", {"query": text[:200], "best_score": round(best_score, 4), "chunks": len(context_parts), "materials": len(materials)})
+    return output, _mat_buttons(materials)
 
-    buttons = _mat_buttons(materials) or None
-
-    await db.log_event(
-        user_id,
-        "answer",
-        {
-            "query": text[:200],
-            "best_score": round(best_score, 4),
-            "chunks": len(context_parts),
-            "materials": len(materials),
-        },
-    )
-
-    return output, buttons
-
-
-async def _recommend(
-    user_id: int,
-    text: str,
-    analysis: dict,
-    profile: dict,
-) -> Reply:
+async def _recommend(user_id, text, analysis, profile):
     query = (analysis.get("search_query") or "").strip()
-
     if not query:
         return _no_recommendations()
-
     try:
         found = await search.materials(query, limit=20)
-        materials = recs.rank(found, profile, top=3)
+        materials = _eligible_linked_materials(recs.rank(found, profile, top=2))
     except Exception:
         log.exception("Recommendation search failed for user %s", user_id)
-        await db.log_event(
-            user_id,
-            "recommendation_error",
-            {"query": text[:200]},
-        )
+        await db.log_event(user_id, "recommendation_error", {"query": text[:200]})
         return _no_recommendations()
-
     if not materials:
-        await db.log_event(
-            user_id,
-            "no_recommendations",
-            {
-                "query": text[:200],
-                "search_query": query[:200],
-            },
-        )
+        await db.log_event(user_id, "no_recommendations", {"query": text[:200], "search_query": query[:200]})
         return _no_recommendations()
+    output = "Нашёл подходящие материалы:\n\n" + _mat_lines(materials)
+    await db.log_event(user_id, "recommend", {"query": text[:200], "search_query": query[:200], "materials": [m["id"] for m in materials if m.get("id")]})
+    return output, _mat_buttons(materials)
 
-    output = (
-        "Подобрал материалы под вашу задачу:\n\n"
-        + _mat_lines(materials)
-        + "\n\nСледующий шаг: начните с первого материала."
-    )
-
-    if not any(
-        profile.get(key)
-        for key in ("stage", "area", "goal", "experience")
-    ):
-        output += (
-            "\n\nЕсли расскажете о стадии и сфере бизнеса, "
-            "смогу точнее учитывать ваш контекст в следующих рекомендациях."
-        )
-
-    await db.log_event(
-        user_id,
-        "recommend",
-        {
-            "query": text[:200],
-            "search_query": query[:200],
-            "materials": [
-                material["id"]
-                for material in materials
-                if material.get("id")
-            ],
-        },
-    )
-
-    return output, _mat_buttons(materials) or None
-
-
-async def _reminder(
-    user_id: int,
-    analysis: dict,
-    profile: dict,
-) -> Reply:
+async def _reminder(user_id, analysis, profile):
     reminder = analysis.get("reminder")
-
     if reminder is None:
-        return (
-            "Что именно нужно напомнить? Например: "
-            "«Напомни завтра в 10:00 проверить рекламу».",
-            None,
-        )
-
+        return "Что именно нужно напомнить и когда?", None
     tz = reminders.tz_of(profile.get("tz"))
-
     if reminder.get("missing") or not reminder.get("when"):
-        return (
-            reminder.get("missing") or "Когда напомнить? Например: завтра в 10:00.",
-            None,
-        )
-
+        return reminder.get("missing") or "Когда напомнить?", None
     try:
-        dt = datetime.fromisoformat(
-            reminder["when"].replace("Z", "+00:00")
-        )
+        dt = datetime.fromisoformat(reminder["when"].replace("Z", "+00:00"))
     except (TypeError, ValueError):
-        return (
-            "Не удалось разобрать дату и время. Напишите, например: "
-            "«завтра в 10:00».",
-            None,
-        )
-
+        return "Не удалось распознать дату и время. Укажите их, например: завтра в 10:00.", None
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=tz)
-
     if dt <= datetime.now(timezone.utc):
-        return (
-            "Это время уже прошло. На когда поставить напоминание?",
-            None,
-        )
-
-    rule = reminders.rule_from(
-        reminder.get("repeat", "none"),
-        reminder.get("n"),
-    )
-
-    reminder_id = await reminders.create(
-        user_id,
-        reminder.get("text") or "Напоминание",
-        dt.astimezone(timezone.utc),
-        rule,
-    )
-
+        return "Указанное время уже прошло. На когда поставить напоминание?", None
+    rule = reminders.rule_from(reminder.get("repeat", "none"), reminder.get("n"))
+    reminder_id = await reminders.create(user_id, reminder.get("text") or "Напоминание", dt.astimezone(timezone.utc), rule)
     if reminder_id is None:
-        return (
-            f"У вас уже {settings.max_reminders_per_user} активных "
-            "напоминаний. Отключите ненужные в /reminders и повторите.",
-            None,
-        )
-
-    await db.log_event(
-        user_id,
-        "reminder_created",
-        {
-            "id": reminder_id,
-            "rule": rule,
-        },
-    )
-
+        return f"У вас уже {settings.max_reminders_per_user} активных напоминаний. Отключите ненужное и повторите.", None
+    await db.log_event(user_id, "reminder_created", {"id": reminder_id, "rule": rule})
     local_dt = dt.astimezone(tz)
+    return (f"Напоминание создано: {reminder.get('text') or 'Напоминание'}.\nКогда: {local_dt:%d.%m.%Y в %H:%M} ({reminders.human_rule(rule)}).", None)
 
-    return (
-        f"Готово. Напомню: «{reminder.get('text') or 'Напоминание'}»\n"
-        f"Когда: {local_dt:%d.%m.%Y в %H:%M} "
-        f"({reminders.human_rule(rule)}).\n"
-        "Изменить частоту или отключить напоминание можно в /reminders.",
-        None,
-    )
-
-
-async def respond(user_id: int, text: str) -> Reply:
-    """Обрабатывает сообщение пользователя и возвращает текст с кнопками."""
-
+async def respond(user_id, text):
     text = (text or "").strip()
-
     if not text:
-        return "Напишите вопрос или опишите задачу — я постараюсь помочь.", None
-
+        return "Напишите вопрос или опишите задачу.", None
     profile = await db.get_profile(user_id)
     history = await db.get_history(user_id, 6)
-
-    analysis = await analyze.run(
-        text,
-        profile,
-        history,
-    )
-
-    # db.update_profile игнорирует None, поэтому существующие значения
-    # не стираются, если пользователь не сообщил новое значение.
-    await db.update_profile(
-        user_id,
-        **analysis["profile"],
-    )
-
+    analysis = await analyze.run(text, profile, history)
+    await db.update_profile(user_id, **analysis["profile"])
     profile = await db.get_profile(user_id)
 
     intent = analysis["intent"]
     clarify = analysis.get("clarify")
-
     if intent == "reminder":
-        reply = await _reminder(
-            user_id,
-            analysis,
-            profile,
-        )
-
+        reply = await _reminder(user_id, analysis, profile)
     elif intent == "chitchat":
-        reply = (
-            "Я — Skilly, помощник для предпринимателей. "
-            "Могу отвечать на вопросы по маркетингу, продажам, "
-            "налогам и организации бизнеса, подбирать материалы "
-            "«Альфа-Курса» и создавать напоминания.\n\n"
-            "Напишите, с какой задачей хотите разобраться.",
-            None,
-        )
-
+        reply = ("Я помогаю предпринимателям разбираться с вопросами бизнеса и находить полезные материалы. Напишите, с какой задачей помочь.", None)
     elif intent == "profile":
-        reply = (
-            "Записал. Буду учитывать эту информацию при ответах "
-            "и подборе материалов.\n\n"
-            "Можете задать вопрос или попросить подобрать материалы "
-            "под конкретную задачу.",
-            None,
-        )
-
+        reply = ("Информацию сохранил и буду учитывать её в следующих ответах.", None)
     elif clarify:
-        # Сохраняем уточнение в истории. Следующее сообщение пользователя
-        # будет передано анализатору вместе с этой репликой.
-        reply = (clarify, None)
-
+        reply = (plain_text(clarify), None)
     elif intent == "recommend":
-        reply = await _recommend(
-            user_id,
-            text,
-            analysis,
-            profile,
-        )
-
+        reply = await _recommend(user_id, text, analysis, profile)
     else:
-        reply = await _answer(
-            user_id,
-            text,
-            analysis,
-            profile,
-        )
+        reply = await _answer(user_id, text, analysis, profile)
 
     await db.save_message(user_id, "user", text)
     await db.save_message(user_id, "assistant", reply[0])
-
     return reply
