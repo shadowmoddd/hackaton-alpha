@@ -1780,3 +1780,644 @@ h1,h2,h3,.brand-copy b{font-family:'Styrene A',Arial,sans-serif}
  .reminder-info{padding-right:110px}.reminder-mascot{width:110px;height:110px}
  .chat-mascot{width:76px;height:68px;flex-basis:76px}
 }
+
+/* ─────────────────────────────────────────────────────────────
+   AGENT / PRODUCT UI — layout refinement
+   ───────────────────────────────────────────────────────────── */
+:root {
+  --ink: #241632;
+  --muted: #777181;
+  --red: #f03227;
+  --red-dark: #d92520;
+  --red-soft: #fff0ed;
+  --line: #ebe6ee;
+  --paper: #fff;
+  --soft: #f7f5f7;
+  --shadow: 0 12px 36px rgba(36, 22, 50, .055);
+}
+html, body { background: #f7f5f7; }
+body { color: var(--ink); }
+.app-shell { min-height: 100dvh; padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+.topbar {
+  min-height: 72px; padding: 10px max(20px, calc((100% - 1120px) / 2));
+  gap: 0; background: rgba(255,255,255,.94); border-bottom: 1px solid var(--line);
+  box-shadow: 0 3px 18px rgba(36,22,50,.025);
+}
+.brand-mark { width: 42px; height: 42px; flex: 0 0 42px; border-radius: 13px; background: var(--red); }
+.brand-mark img { width: 100%; height: 100%; object-fit: contain; padding: 4px; }
+.brand-wordmark { width: 102px; height: 44px; margin: 0 12px; object-fit: contain; }
+.brand-copy { margin-left: 0; gap: 3px; }
+.brand-copy b { font-size: 13px; font-weight: 700; letter-spacing: .015em; }
+.brand-copy span { font-size: 8px; letter-spacing: .075em; }
+.top-status { margin-left: auto; white-space: nowrap; }
+.main-content { width: min(calc(100% - 40px), 1080px); padding: 34px 0 48px; }
+.eyebrow { margin-bottom: 8px; font-size: 9px; letter-spacing: .14em; }
+h1 { font-size: clamp(27px, 3.2vw, 40px); line-height: 1.14; letter-spacing: -.045em; }
+h2 { font-size: 20px; line-height: 1.25; letter-spacing: -.035em; }
+p { line-height: 1.65; }
+.home-page { gap: 22px; }
+.home-greeting { align-items: center; padding: 0 2px; }
+.home-greeting h1 { max-width: 760px; margin-bottom: 7px; }
+.home-greeting p { margin: 0; font-size: 13px; }
+.home-avatar { width: 48px; height: 48px; flex-basis: 48px; padding: 7px; border-radius: 15px; box-shadow: none; }
+.home-avatar img { object-fit: contain; }
+.home-hero {
+  min-height: 270px; padding: 34px 36px; border-radius: 23px;
+  background: radial-gradient(circle at 83% 22%, rgba(160,99,226,.26), transparent 29%), linear-gradient(112deg,#241332 0%,#38204e 62%,#57254f 100%);
+  box-shadow: 0 16px 38px rgba(37,20,63,.13);
+}
+.home-hero::before { background: linear-gradient(90deg,rgba(36,19,50,.98) 0%,rgba(36,19,50,.88) 46%,rgba(36,19,50,.08) 100%); }
+.home-hero::after { right: -100px; bottom: -205px; width: 400px; height: 400px; }
+.hero-agent-art { right: 4%; bottom: -34px; width: 34%; height: 112%; object-position: center bottom; filter: drop-shadow(0 14px 22px rgba(0,0,0,.16)); }
+.home-hero-label { margin-bottom: 15px; font-size: 9px; letter-spacing: .14em; }
+.home-hero h2 { max-width: 58%; margin-bottom: 10px; font-size: clamp(24px,2.7vw,33px); }
+.home-hero p { max-width: 52%; margin-bottom: 18px; font-size: 12px; line-height: 1.7; }
+.home-hero-button { min-height: 43px; padding: 0 17px; border-radius: 11px; background: var(--red); color: white; font-size: 11px; }
+.home-section-heading { margin-top: 5px; }
+.home-section-heading h2 { font-size: 19px; }
+.home-profile-card { padding: 21px; border-radius: 18px; box-shadow: var(--shadow); }
+.home-profile-top b { font-size: 14px; line-height: 1.45; }
+.home-profile-top span { font-size: 11px; }
+.home-profile-details { gap: 14px; }
+.home-profile-details b { font-size: 11px; }
+.home-actions { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
+.home-actions > button { min-height: 84px; padding: 13px; border-radius: 15px; }
+.home-actions b { font-size: 11px; line-height: 1.4; }
+.home-actions small { font-size: 10px; }
+.home-action-icon { width: 38px; height: 38px; flex-basis: 38px; }
+.home-tip { padding: 15px 17px; border-radius: 15px; }
+/* Chat: keep the conversation as the primary surface, mascot as a small brand cue. */
+.welcome-line { align-items: center; margin-bottom: 16px; }
+.welcome-line h1 { font-size: clamp(26px,3.2vw,38px); }
+.welcome-line p { font-size: 13px; }
+.chat-mascot { width: 92px; height: 76px; flex: 0 0 92px; padding: 4px; border-radius: 16px; background: #fff; border: 1px solid var(--line); }
+.trust-note { margin-bottom: 12px; padding: 11px 14px; font-size: 10px; }
+.chat-window { border-radius: 18px; box-shadow: var(--shadow); }
+.chat-heading { min-height: 66px; padding: 13px 17px; }
+.chat-heading > div:last-child { min-width: 0; }
+.chat-heading > div:last-child span { font-size: 10px; }
+.messages { min-height: 230px; max-height: min(48vh,460px); padding: 18px; gap: 14px; }
+.message-row { align-items: flex-end; gap: 8px; }
+.message-avatar { width: 28px; height: 28px; flex-basis: 28px; }
+.bubble-wrap { max-width: min(78%,680px); min-width: 0; }
+.bubble { padding: 12px 14px; border-radius: 14px 14px 14px 5px; font-size: 12px; line-height: 1.65; }
+.message-row.user .bubble { border-radius: 14px 14px 5px 14px; }
+.message-meta { color: #9a93a0; font-size: 9px; }
+.suggestions-label { padding: 14px 17px 8px; }
+.prompt-list { gap: 7px; padding: 0 17px 13px; }
+.prompt-chip { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; padding: 8px 11px; border-radius: 10px; font-size: 10px; }
+.composer { margin: 0 13px; padding: 8px 9px 8px 13px; border-radius: 13px; }
+.composer textarea { min-height: 36px; font-size: 12px; }
+.composer-foot { padding: 8px 15px 12px; font-size: 9px; }
+.quick-grid { margin-top: 12px; gap: 10px; }
+.quick-grid > button { display: flex; align-items: center; gap: 11px; min-width: 0; min-height: 70px; padding: 13px 15px; border: 1px solid var(--line); border-radius: 14px; background: #fff; color: var(--ink); text-align: left; }
+.quick-grid > button > svg:first-child { width: 21px; height: 21px; flex: 0 0 21px; color: #8b48c6; }
+.quick-grid > button > span { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
+.quick-grid > button b { font-size: 11px; line-height: 1.35; }
+.quick-grid > button small { color: var(--muted); font-size: 9px; line-height: 1.4; }
+.quick-grid > button > svg:last-child { width: 16px; flex: 0 0 16px; color: #9b94a2; }
+/* Sections: deliberate spacing and predictable content flow. */
+.section-page { display: flex; flex-direction: column; align-items: stretch; gap: 14px; animation: appear .3s ease both; }
+.section-page > .eyebrow { margin: 0 0 -7px; }
+.section-page h1 { margin: 0; }
+.page-lead { max-width: 680px; margin: -4px 0 4px; font-size: 12px; line-height: 1.65; }
+.reminder-info { position: relative; display: flex; align-items: center; gap: 13px; min-height: 112px; padding: 18px 150px 18px 18px; border: 1px solid #eee5f0; border-radius: 17px; background: linear-gradient(105deg,#fff 0%,#fff9f7 100%); }
+.reminder-info > svg { width: 20px; height: 20px; flex: 0 0 20px; color: #8b48c6; }
+.reminder-info > div { display: flex; flex: 1; flex-direction: column; gap: 6px; min-width: 0; }
+.reminder-info b { display: block; color: var(--ink); font-size: 12px; line-height: 1.45; }
+.reminder-info span { display: block; color: var(--muted); font-size: 10px; line-height: 1.55; }
+.reminder-mascot { right: 8px; bottom: -10px; width: 126px; height: 126px; object-fit: contain; }
+.primary-action { align-self: flex-start; min-height: 44px; padding: 0 17px; border-radius: 11px; font-size: 11px; }
+.section-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 7px 0 0; }
+.section-row h2 { margin: 0; font-size: 18px; }
+.section-row > span { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.empty-state { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 28px 20px; border: 1px solid var(--line); border-radius: 17px; background: #fff; text-align: center; }
+.empty-icon { display: grid; width: 54px; height: 54px; place-items: center; border-radius: 16px; background: #f5eafa; color: #8847c4; }
+.empty-state b { color: var(--ink); font-size: 12px; }
+.empty-state p { margin: 0; font-size: 10px; }
+.reminder-list { display: flex; flex-direction: column; gap: 9px; }
+.reminder-card { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 15px; background: #fff; }
+.reminder-symbol { display: grid; width: 38px; height: 38px; flex: 0 0 38px; place-items: center; border-radius: 12px; background: #f5eafa; color: #8544c1; }
+.reminder-content { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
+.reminder-content b { color: var(--ink); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.reminder-content span,.reminder-content small { color: var(--muted); font-size: 9px; line-height: 1.45; overflow-wrap: anywhere; }
+.reminder-controls { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.reminder-controls > button:first-child { min-height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 9px; background: #fff; color: var(--ink); font-size: 9px; }
+.demo-disclaimer { margin: 0; font-size: 10px; }
+.material-feature { min-height: 205px; padding: 22px 180px 22px 22px; border-radius: 17px; }
+.material-feature > div:not(.feature-icon) { position: relative; z-index: 1; }
+.material-feature h2 { font-size: 18px; line-height: 1.3; }
+.material-feature p { font-size: 10px; line-height: 1.6; }
+.capabilities-art { right: 8px; bottom: 0; width: 160px; height: 160px; }
+.material-search { min-height: 48px; }
+.empty-catalog { padding: 25px 18px; }
+.profile-progress { border-radius: 15px; }
+.form-card { gap: 16px; padding: 20px; border-radius: 17px; }
+.form-card label { gap: 7px; font-size: 10px; }
+.form-card input,.form-card select { min-height: 43px; font-size: 11px; }
+.bottom-nav { justify-content: center; gap: 5px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); }
+.bottom-nav button { max-width: 132px; min-height: 52px; border-radius: 12px; }
+.bottom-nav button span { font-size: 9px; }
+@media (max-width: 700px) {
+  .app-shell { padding-bottom: calc(88px + env(safe-area-inset-bottom)); }
+  .topbar { min-height: 62px; padding: 8px 12px; }
+  .brand-mark { width: 35px; height: 35px; flex-basis: 35px; border-radius: 11px; }
+  .brand-wordmark { width: 76px; height: 38px; margin: 0 7px; }
+  .brand-copy b { font-size: 10px; }
+  .brand-copy span { max-width: 145px; font-size: 6px; letter-spacing: .05em; }
+  .top-status { gap: 5px; padding: 6px 8px; font-size: 8px; }
+  .main-content { width: calc(100% - 26px); padding: 22px 0 30px; }
+  .home-page { gap: 18px; }
+  .home-greeting { align-items: flex-start; gap: 10px; }
+  .home-greeting h1 { max-width: 290px; font-size: 27px; }
+  .home-greeting p { max-width: 290px; font-size: 11px; }
+  .home-avatar { width: 40px; height: 40px; flex-basis: 40px; padding: 6px; }
+  .home-hero { min-height: 310px; padding: 24px 21px; border-radius: 19px; }
+  .home-hero::before { background: linear-gradient(180deg,rgba(36,19,50,.98) 0%,rgba(36,19,50,.9) 53%,rgba(36,19,50,.25) 100%); }
+  .home-hero-label { margin-bottom: 12px; font-size: 8px; }
+  .home-hero h2 { max-width: 100%; font-size: 25px; }
+  .home-hero p { max-width: 94%; font-size: 10px; }
+  .hero-agent-art { right: 0; bottom: -38px; width: 62%; height: 62%; opacity: .98; }
+  .home-profile-card { padding: 16px; }
+  .home-profile-details { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .home-actions { grid-template-columns: 1fr; }
+  .home-actions > button { min-height: 68px; }
+  .welcome-line { gap: 10px; }
+  .welcome-line h1 { font-size: 25px; }
+  .welcome-line p { font-size: 11px; }
+  .chat-mascot { width: 66px; height: 60px; flex-basis: 66px; }
+  .messages { min-height: 210px; max-height: 42vh; padding: 13px 11px; }
+  .bubble-wrap { max-width: 88%; }
+  .bubble { font-size: 11px; }
+  .prompt-list { padding: 0 12px 11px; }
+  .prompt-chip { font-size: 9px; }
+  .composer { margin: 0 9px; }
+  .composer-foot { font-size: 8px; }
+  .quick-grid { grid-template-columns: 1fr; }
+  .quick-grid > button { min-height: 62px; }
+  .section-page { gap: 12px; }
+  .section-page h1 { font-size: 29px; }
+  .reminder-info { min-height: 100px; padding: 15px 100px 15px 14px; }
+  .reminder-info b { font-size: 10px; }
+  .reminder-info span { font-size: 9px; }
+  .reminder-mascot { right: 0; bottom: -7px; width: 100px; height: 100px; }
+  .primary-action { min-height: 42px; }
+  .empty-state { padding: 23px 15px; }
+  .material-feature { min-height: 0; padding: 18px 18px 125px; }
+  .capabilities-art { right: 5px; width: 130px; height: 130px; }
+  .form-card { grid-template-columns: 1fr; padding: 16px; }
+  .form-card .primary-action { width: 100%; }
+  .reminder-card { align-items: flex-start; flex-wrap: wrap; }
+  .reminder-content { width: calc(100% - 52px); flex: 1 1 calc(100% - 52px); }
+  .reminder-controls { width: 100%; justify-content: flex-end; }
+  .bottom-nav { gap: 2px; padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); }
+  .bottom-nav button { min-height: 48px; padding: 3px 1px; gap: 3px; }
+  .bottom-nav button svg { width: 17px; height: 17px; }
+  .bottom-nav button span { font-size: 8px; }
+}
+@media (max-width: 370px) {
+  .brand-copy { display: none; }
+  .brand-wordmark { margin-right: auto; }
+  .home-hero { min-height: 330px; }
+  .home-profile-details { gap: 12px 8px; }
+}
+
+/* Final brand and layout refinements requested for АГЕНТ */
+.topbar {
+  min-height: 82px;
+  gap: 0;
+}
+.brand-mark {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--red);
+  box-shadow: 0 7px 18px rgba(239, 49, 36, .16);
+}
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  padding: 7px;
+  object-fit: contain;
+}
+.brand-copy {
+  margin-left: 14px;
+  gap: 3px;
+}
+.brand-copy b {
+  color: #24152f;
+  font-family: 'Styrene A', 'DM Sans', sans-serif;
+  font-size: 24px;
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -.9px;
+}
+.brand-copy span {
+  color: #938a9b;
+  font-size: 10px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: 1.05px;
+}
+
+/* The mascot/avatar is reserved exclusively for assistant message rows. */
+.home-avatar,
+.hero-agent-art,
+.chat-mascot,
+.assistant-avatar,
+.reminder-mascot,
+.capabilities-art {
+  display: none !important;
+}
+.chat-heading-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.chat-heading-copy b {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 800;
+}
+.chat-heading-copy span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.message-row.assistant {
+  flex-direction: row-reverse;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.message-row.assistant .bubble-wrap {
+  align-items: flex-start;
+  max-width: min(82%, 760px);
+}
+.message-row.assistant .bubble {
+  border-radius: 17px 17px 5px 17px;
+  text-align: left;
+}
+.message-row.assistant .message-meta {
+  align-self: flex-start;
+  text-align: left;
+}
+.message-avatar {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  margin-bottom: 21px;
+  border: 1px solid rgba(239,49,36,.13);
+  border-radius: 12px;
+  background: var(--red);
+  box-shadow: 0 4px 12px rgba(239,49,36,.12);
+}
+.message-avatar img {
+  width: 100%;
+  height: 100%;
+  padding: 5px;
+  object-fit: contain;
+}
+
+/* Chat actions: clear hierarchy, generous spacing and strong tap targets. */
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+.quick-grid > button {
+  min-height: 86px;
+  gap: 14px;
+  padding: 17px 19px;
+  border: 1px solid rgba(117, 67, 151, .16);
+  border-radius: 18px;
+  background: linear-gradient(135deg, #fff 0%, #fbf7ff 100%);
+  box-shadow: 0 8px 24px rgba(39, 20, 57, .055);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.quick-grid > button:first-child {
+  border-color: rgba(239,49,36,.2);
+  background: linear-gradient(135deg, #fff 0%, #fff5f2 100%);
+}
+.quick-grid > button:hover {
+  transform: translateY(-2px);
+  border-color: rgba(239,49,36,.36);
+  box-shadow: 0 12px 28px rgba(39, 20, 57, .09);
+}
+.quick-grid > button > svg:first-child {
+  width: 24px;
+  height: 24px;
+  color: #8b48c6;
+}
+.quick-grid > button:first-child > svg:first-child { color: var(--red); }
+.quick-grid > button b { font-size: 13px; line-height: 1.4; }
+.quick-grid > button small { font-size: 11px; line-height: 1.45; }
+.quick-grid > button > svg:last-child { color: #a69aaf; }
+
+/* Reminder page: consistent vertical rhythm and no character artwork. */
+.section-page {
+  gap: 0;
+}
+.section-page > .page-lead {
+  margin: 0 0 24px;
+}
+.reminder-info {
+  min-height: 0;
+  align-items: flex-start;
+  gap: 14px;
+  margin: 0 0 20px;
+  padding: 20px 22px;
+  border: 1px solid rgba(139,72,198,.14);
+  border-radius: 18px;
+  background: linear-gradient(115deg, #fff 0%, #fbf7ff 100%);
+}
+.reminder-info > svg {
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+  color: #8b48c6;
+}
+.reminder-info > div { gap: 7px; }
+.reminder-info b { font-size: 14px; line-height: 1.45; }
+.reminder-info span { font-size: 12px; line-height: 1.6; }
+.primary-action {
+  min-height: 48px;
+  width: fit-content;
+  margin: 0 0 28px;
+  padding: 0 21px;
+  border-radius: 13px;
+  box-shadow: 0 8px 18px rgba(239,49,36,.16);
+}
+.section-row {
+  align-items: center;
+  margin: 0 0 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.section-row h2 { margin: 0; }
+.empty-state {
+  display: flex;
+  min-height: 190px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 28px 22px;
+  border: 1px dashed rgba(139,72,198,.25);
+  border-radius: 18px;
+  background: rgba(255,255,255,.78);
+  text-align: center;
+}
+.empty-state .empty-icon {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  margin-bottom: 3px;
+  border-radius: 16px;
+  background: #f4eafd;
+  color: #8b48c6;
+}
+.empty-state b { color: var(--ink); font-size: 15px; }
+.empty-state p { max-width: 340px; margin: 0; font-size: 12px; line-height: 1.55; }
+.reminder-list { display: grid; gap: 12px; }
+.reminder-card {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 17px 18px;
+  border-radius: 16px;
+}
+.reminder-content { gap: 6px; }
+.reminder-content b { font-size: 13px; line-height: 1.45; }
+.reminder-content span { font-size: 11px; line-height: 1.5; }
+.demo-disclaimer { margin-top: 16px; font-size: 11px; line-height: 1.6; }
+
+@media (max-width: 640px) {
+  .topbar { min-height: 70px; padding: 10px 16px; }
+  .brand-mark { width: 40px; height: 40px; flex-basis: 40px; border-radius: 12px; }
+  .brand-copy { margin-left: 11px; }
+  .brand-copy b { font-size: 21px; }
+  .brand-copy span { font-size: 8px; letter-spacing: .7px; }
+  .quick-grid { grid-template-columns: 1fr; gap: 10px; margin-top: 14px; }
+  .quick-grid > button { min-height: 74px; padding: 14px 16px; }
+  .reminder-info { padding: 16px; margin-bottom: 16px; }
+  .reminder-info b { font-size: 13px; }
+  .reminder-info span { font-size: 11px; }
+  .primary-action { width: 100%; justify-content: center; margin-bottom: 24px; }
+  .message-row.assistant .bubble-wrap { max-width: calc(100% - 48px); }
+  .message-avatar { width: 30px; height: 30px; flex-basis: 30px; border-radius: 10px; }
+}
+
+/* Refined sizing and intentional mascot placement */
+.main-content {
+  width: min(100% - 56px, 1160px);
+  padding-top: 44px;
+  padding-bottom: 64px;
+}
+.topbar {
+  min-height: 88px;
+  padding-left: max(28px, calc((100% - 1160px) / 2));
+  padding-right: max(28px, calc((100% - 1160px) / 2));
+}
+.brand-copy {
+  gap: 1px;
+  margin-left: 15px;
+}
+.brand-wordmark-image {
+  display: block;
+  width: 124px;
+  height: 39px;
+  object-fit: contain;
+  object-position: left center;
+}
+.brand-copy span {
+  font-size: 10px;
+  letter-spacing: 1.05px;
+  line-height: 1.35;
+}
+.home-page { gap: 30px; }
+.home-greeting h1 { font-size: clamp(31px, 4.2vw, 43px); }
+.home-greeting p { font-size: 16px; }
+.home-hero {
+  position: relative;
+  isolation: isolate;
+  min-height: 300px;
+  padding: 38px 340px 36px 42px;
+  overflow: hidden;
+  border-radius: 25px;
+  background: radial-gradient(ellipse at 88% 45%, rgba(139,72,198,.28), transparent 38%), linear-gradient(115deg, #251238 0%, #321747 66%, #51234f 100%);
+}
+.home-hero > :not(.home-hero-mascot) { position: relative; z-index: 2; }
+.home-hero h2 { max-width: 650px; font-size: clamp(25px, 3vw, 34px); }
+.home-hero p { max-width: 590px; font-size: 15px; }
+.home-hero-mascot {
+  position: absolute;
+  z-index: 1;
+  right: 34px;
+  bottom: -8px;
+  width: min(34%, 310px);
+  height: 290px;
+  object-fit: contain;
+  object-position: center bottom;
+  filter: drop-shadow(0 18px 22px rgba(10, 3, 20, .22));
+}
+.section-page {
+  gap: 0;
+  padding: 4px 0 18px;
+}
+.section-page > h1 { margin-bottom: 12px; font-size: clamp(32px, 4vw, 42px); }
+.section-page > .page-lead { margin-bottom: 28px; font-size: 16px; }
+.material-search, .material-feature, .empty-catalog,
+.profile-progress, .form-card, .reminder-info, .reminder-card, .empty-state {
+  border-radius: 20px;
+}
+.material-search { min-height: 68px; padding: 10px 12px 10px 20px; margin-bottom: 26px; }
+.material-feature { padding: 28px; margin-bottom: 26px; min-height: 220px; }
+.empty-catalog { padding: 34px 28px; margin-top: 16px; }
+.reminder-list { gap: 16px; margin-top: 6px; }
+.reminder-card { padding: 22px 24px; gap: 18px; }
+.reminder-content b { font-size: 15px; }
+.reminder-content span, .reminder-content small { font-size: 13px; line-height: 1.6; }
+.reminder-info {
+  position: relative;
+  min-height: 150px;
+  align-items: center;
+  padding: 24px 220px 24px 26px;
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+.reminder-info-mascot {
+  position: absolute;
+  right: 20px;
+  bottom: -9px;
+  width: 170px;
+  height: 150px;
+  object-fit: contain;
+  object-position: center bottom;
+}
+.primary-action { min-height: 54px; margin-bottom: 32px; padding: 0 25px; font-size: 15px; }
+.section-row { margin-bottom: 18px; padding-bottom: 15px; }
+.empty-state { min-height: 210px; padding: 36px 28px; }
+.profile-progress { padding: 24px 26px; margin-bottom: 24px; }
+.form-card { gap: 22px; padding: 28px; }
+.form-card label { gap: 10px; font-size: 14px; }
+.form-card input, .form-card select, .form-card textarea { min-height: 50px; padding: 12px 15px; font-size: 15px; }
+.home-profile-card { padding: 26px; }
+.home-profile-details { gap: 22px; }
+.bottom-nav button { min-height: 62px; }
+
+@media (max-width: 700px) {
+  .main-content { width: min(100% - 32px, 560px); padding-top: 26px; padding-bottom: 36px; }
+  .topbar { min-height: 72px; padding: 9px 16px; }
+  .brand-wordmark-image { width: 104px; height: 32px; }
+  .brand-copy span { font-size: 8px; letter-spacing: .55px; }
+  .home-hero { min-height: 360px; padding: 25px 22px 190px; border-radius: 21px; }
+  .home-hero h2 { max-width: 100%; font-size: 25px; }
+  .home-hero p { max-width: 100%; font-size: 13px; }
+  .home-hero-mascot { right: 14px; bottom: -8px; width: 190px; height: 190px; }
+  .section-page > .page-lead { margin-bottom: 20px; font-size: 14px; }
+  .material-search { min-height: 58px; margin-bottom: 18px; }
+  .material-feature { padding: 20px; margin-bottom: 18px; }
+  .reminder-info { min-height: 132px; padding: 18px 130px 18px 18px; }
+  .reminder-info-mascot { right: 3px; width: 126px; height: 122px; }
+  .reminder-card { padding: 17px; gap: 12px; }
+  .empty-state { min-height: 180px; padding: 25px 18px; }
+  .profile-progress, .form-card { padding: 19px; }
+  .form-card { gap: 17px; }
+}
+
+/* Brand header and larger, more legible Mini App scale */
+.topbar {
+  min-height: 96px;
+  align-items: center;
+}
+.brand-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+  margin-left: 0;
+}
+.brand-wordmark-image {
+  width: 148px;
+  height: 47px;
+  object-fit: contain;
+  object-position: left center;
+}
+.brand-copy span {
+  color: #766b7f;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .085em;
+  line-height: 1.35;
+}
+
+/* Lift the character slightly so it sits naturally on the hero baseline. */
+.home-hero-mascot {
+  bottom: 2px;
+  transform: translateY(-9px);
+}
+
+/* Bring the overall interface closer to the original, more generous scale. */
+.app-shell { font-size: 16px; }
+.main-content {
+  width: min(100% - 48px, 1200px);
+  padding-top: 48px;
+  padding-bottom: 72px;
+}
+.home-page { gap: 34px; }
+.home-greeting h1 { font-size: clamp(34px, 4.4vw, 46px); }
+.home-greeting p, .page-lead { font-size: 16px; line-height: 1.7; }
+.section-page > .eyebrow {
+  margin-bottom: 13px;
+  font-size: 11px;
+  letter-spacing: .16em;
+}
+.section-page > h1 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  font-size: clamp(34px, 4.2vw, 44px);
+  line-height: 1.12;
+}
+.section-page > .page-lead { margin-top: 0; margin-bottom: 30px; }
+.material-search { min-height: 72px; }
+.material-search > svg { width: 23px; height: 23px; }
+.material-search input { font-size: 16px; }
+.material-search button, .primary-action { font-size: 15px; }
+.material-feature { padding: 32px; }
+.profile-progress { min-height: 94px; }
+.form-card { gap: 24px; }
+.form-card label { font-size: 15px; }
+.form-card input, .form-card select, .form-card textarea { min-height: 54px; font-size: 16px; }
+.bottom-nav { gap: 10px; padding-top: 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+.bottom-nav button { min-height: 68px; min-width: 88px; gap: 7px; }
+.bottom-nav button svg { width: 24px; height: 24px; }
+.bottom-nav button span { font-size: 10px; font-weight: 700; }
+.quick-grid > button { min-height: 92px; }
+.quick-grid > button > svg:first-child { width: 27px; height: 27px; }
+
+@media (max-width: 700px) {
+  .topbar { min-height: 82px; padding: 10px 18px; }
+  .brand-wordmark-image { width: 132px; height: 42px; }
+  .brand-copy span { font-size: 9px; letter-spacing: .06em; }
+  .main-content { width: min(100% - 36px, 560px); padding-top: 30px; padding-bottom: 42px; }
+  .home-greeting h1 { font-size: 32px; }
+  .section-page > .eyebrow { margin-bottom: 10px; font-size: 10px; }
+  .section-page > h1 { margin-bottom: 12px; font-size: 32px; }
+  .section-page > .page-lead { margin-bottom: 22px; font-size: 14px; }
+  .bottom-nav { gap: 2px; padding-left: 7px; padding-right: 7px; }
+  .bottom-nav button { min-width: 0; flex: 1 1 0; min-height: 62px; }
+  .bottom-nav button svg { width: 23px; height: 23px; }
+  .bottom-nav button span { font-size: 9px; }
+  .home-hero-mascot { bottom: 0; transform: translateY(-7px); }
+}

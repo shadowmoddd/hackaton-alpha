@@ -6,10 +6,9 @@ import {
 } from 'lucide-react'
 import '@/styles/globals.css'
 import agentMark from '@/assets/agent-symbol.png'
+import agentWordmark from '@/assets/agent-wordmark.png'
 import agentMainCharacter from '@/assets/agent-main-character.png'
 import agentNotifications from '@/assets/agent-notifications.png'
-import agentCapabilities from '@/assets/agent-capabilities.png'
-import agentWordmark from '@/assets/agent-wordmark.png'
 import {
   api, ApiProfile, ApiReminder, ApiMaterial, isTelegramWebApp
 } from '@/shared/api'
@@ -54,7 +53,7 @@ const initialMessages: Message[] = [
   {
     id: 1,
     role: 'assistant',
-    text: 'Здравствуйте! Я Агент — ваш AI-помощник для предпринимателей. Помогу разобраться в вопросах бизнеса, найти материалы «Альфа-Курса» и не забыть о важных делах.\n\nС чего начнём?',
+    text: 'Здравствуйте! Я Агент — ваш помощник по развитию дела. Помогу разобраться в сложных вопросах, подобрать полезные материалы «Альфа-Курса» и держать важные задачи под контролем.\n\nС чего начнём?',
     time: 'Сейчас'
   }
 ]
@@ -534,10 +533,8 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand-mark"><img src={agentMark} alt="" /></div>
-        <img className="brand-wordmark" src={agentWordmark} alt="АГЕНТ" />
         <div className="brand-copy">
-          <b>АГЕНТ</b>
+          <img className="brand-wordmark-image" src={agentWordmark} alt="∀гент" />
           <span>AI-ПОМОЩНИК ДЛЯ БИЗНЕСА</span>
         </div>
         <div className="top-status">
@@ -552,26 +549,25 @@ export default function App() {
           <section className="home-page">
             <div className="home-greeting">
               <div>
-                <div className="eyebrow">ВАШ БИЗНЕС · ВАШ РОСТ</div>
-                <h1>Ваш бизнес. Новый уровень.</h1>
-                <p>Персональный AI-помощник для решений, роста и уверенных действий.</p>
+                <div className="eyebrow">АЛЬФА-КУРС · ВАШ АГЕНТ</div>
+                <h1>Развивайте своё дело с ясным планом.</h1>
+                <p>Знания, полезные материалы и важные задачи — в одном пространстве.</p>
               </div>
-              <div className="home-avatar"><img src={agentMark} alt="Агент" /></div>
             </div>
 
             <div className="home-hero">
-              <img className="hero-agent-art" src={agentMainCharacter} alt="Иллюстрация Агента" />
               <div className="home-hero-label">
                 <Sparkles size={15} /> ПЕРСОНАЛЬНЫЙ ИИ-ПОМОЩНИК
               </div>
-              <h2>Идеи превращаются в действия.</h2>
+              <h2>От вопроса — к понятному следующему шагу.</h2>
               <p>
-                Получайте ответы на вопросы, находите полезные материалы
-                «Альфа-Курса» и планируйте важные задачи в одном месте.
+                Обсуждайте задачи с Агентом, находите материалы «Альфа-Курса»
+                и сохраняйте важные дела, чтобы ничего не упустить.
               </p>
               <button className="home-hero-button" onClick={() => setTab('chat')}>
                 Задать вопрос <ArrowRight size={16} />
               </button>
+              <img className="home-hero-mascot" src={agentMainCharacter} alt="Маскот Агента с бананами" />
             </div>
 
             <div className="home-section-heading">
@@ -686,10 +682,9 @@ export default function App() {
             <div className="welcome-line">
               <div>
                 <div className="eyebrow">АЛЬФА-КУРС · AI-АССИСТЕНТ</div>
-                <h1>Чем помочь вашему бизнесу?</h1>
+                <h1>С чего начнём сегодня?</h1>
                 <p>Задайте вопрос — разберёмся вместе.</p>
               </div>
-              <div className="chat-mascot"><img src={agentCapabilities} alt="Агент помогает с вопросами бизнеса" /></div>
             </div>
 
             <div className="trust-note">
@@ -703,17 +698,13 @@ export default function App() {
 
             <div className="chat-window">
               <div className="chat-heading">
-                <div className="assistant-avatar"><img src={agentMark} alt="" /></div>
-                <div><b>Агент</b><span>Ваш помощник по развитию бизнеса</span></div>
+                <div className="chat-heading-copy"><b>Агент</b><span>AI-помощник для бизнеса</span></div>
                 <span className="online-pill">{connected ? 'подключено' : 'ожидание'}</span>
               </div>
 
               <div className="messages">
                 {asArray<Message>(messages).map(m => (
                   <div key={m.id} className={`message-row ${m.role}`}>
-                    {m.role === 'assistant' && (
-                      <div className="message-avatar"><img src={agentMark} alt="" /></div>
-                    )}
                     <div className="bubble-wrap">
                       <div className="bubble">
                         {String(m.text ?? '').split('\n').map((line, i) => (
@@ -747,6 +738,9 @@ export default function App() {
                         {m.demo && <em> · демо-ответ</em>}
                       </div>
                     </div>
+                    {m.role === 'assistant' && (
+                      <div className="message-avatar" aria-label="Ответ Агента"><img src={agentMark} alt="∀" /></div>
+                    )}
                   </div>
                 ))}
                 <div ref={endRef} />
@@ -802,7 +796,7 @@ export default function App() {
             <div className="quick-grid">
               <button onClick={() => setTab('materials')}>
                 <BookOpen />
-                <span><b>Найти материалы</b><small>Подборка под вашу задачу</small></span>
+                <span><b>Найти материалы</b><small>Материалы под вашу задачу</small></span>
                 <ChevronRight />
               </button>
               <button onClick={() => setShowNewReminder(true)}>
@@ -817,16 +811,16 @@ export default function App() {
         {tab === 'reminders' && (
           <section className="section-page">
             <div className="eyebrow">ПЛАНИРОВАНИЕ</div>
-            <h1>Напоминания</h1>
-            <p className="page-lead">Не пропускайте важные события и возвращайтесь к обучению вовремя.</p>
+            <h1>Напоминание</h1>
+            <p className="page-lead">Важные дела и сроки — под контролем.</p>
 
             <div className="reminder-info">
-              <img className="reminder-mascot" src={agentNotifications} alt="Агент напоминает о важных делах" />
               <Bell size={18} />
               <div>
                 <b>Разовые и повторяющиеся события</b>
-                <span>Например, уплата налога, отчётность или продолжение курса.</span>
+                <span>Например, важная встреча, срок проекта или время вернуться к обучению.</span>
               </div>
+              <img className="reminder-info-mascot" src={agentNotifications} alt="Маскот Агента с колокольчиком" />
             </div>
 
             <button className="primary-action" onClick={() => setShowNewReminder(true)}>
@@ -840,7 +834,7 @@ export default function App() {
 
             {reminders.length === 0 ? (
               <div className="empty-state">
-                <div className="empty-icon"><img src={agentNotifications} alt="" /></div>
+                <div className="empty-icon"><Bell size={26} /></div>
                 <b>Пока нет напоминаний</b>
                 <p>Добавьте первое событие — оно появится здесь.</p>
               </div>
@@ -883,9 +877,9 @@ export default function App() {
         {tab === 'materials' && (
           <section className="section-page">
             <div className="eyebrow">БАЗА ЗНАНИЙ</div>
-            <h1>Материалы для бизнеса</h1>
+            <h1>Материалы для развития</h1>
             <p className="page-lead">
-              Подберём обучение под конкретную задачу, опыт и стадию вашего дела.
+              Подберите полезные материалы «Альфа-Курса» под свою задачу.
             </p>
 
             <div className="material-search">
@@ -902,7 +896,6 @@ export default function App() {
             </div>
 
             <div className="material-feature">
-              <img className="capabilities-art" src={agentCapabilities} alt="Агент помогает находить полезные материалы" />
               <div className="feature-icon"><Sparkles size={22} /></div>
               <div>
                 <span className="feature-label">ПЕРСОНАЛЬНЫЙ ПОДБОР</span>
@@ -1075,13 +1068,13 @@ export default function App() {
           <MessageCircle /><span>Чат</span>
         </button>
         <button className={tab === 'materials' ? 'active' : ''} onClick={() => setTab('materials')}>
-          <BookOpen /><span>Материалы</span>
+          <BookOpen /><span>База знаний</span>
         </button>
         <button className={tab === 'reminders' ? 'active' : ''} onClick={() => setTab('reminders')}>
-          <Bell /><span>Задачи</span>
+          <Bell /><span>Планирование</span>
         </button>
         <button className={tab === 'business' ? 'active' : ''} onClick={() => setTab('business')}>
-          <BriefcaseBusiness /><span>Профиль</span>
+          <BriefcaseBusiness /><span>Мой бизнес</span>
         </button>
       </nav>
 
@@ -1103,7 +1096,7 @@ export default function App() {
               <input
                 value={reminderTitle}
                 onChange={e => setReminderTitle(e.target.value)}
-                placeholder="Например, оплатить налог"
+                placeholder="Например, закончить урок или подготовить проект"
                 autoFocus
               />
             </label>
