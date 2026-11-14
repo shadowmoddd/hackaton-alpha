@@ -1167,6 +1167,10 @@ export default function App() {
                 min={getDateTimeLocalMin(profile.timezone || 'Europe/Moscow')}
                 required
               />
+              <small>
+                Время указывается по часовому поясу вашего профиля:
+                {' '}{profile.timezone || 'Europe/Moscow'}.
+              </small>
             </label>
 
             <label>

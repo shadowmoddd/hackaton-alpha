@@ -1,4 +1,3 @@
-
 """Планировщик пользовательских и налоговых напоминаний."""
 
 import asyncio
@@ -429,29 +428,6 @@ async def apply_action(
     return "Неизвестное действие."
 
 
-def _is_quiet(local: datetime) -> bool:
-    """Проверяет, попадает ли время в тихие часы."""
-    return (
-        local.hour >= settings.quiet_start
-        or local.hour < settings.quiet_end
-    )
-
-
-def _quiet_end(local: datetime) -> datetime:
-    """Возвращает ближайшее окончание тихих часов в UTC."""
-    end = local.replace(
-        hour=settings.quiet_end,
-        minute=0,
-        second=0,
-        microsecond=0,
-    )
-
-    if local.hour >= settings.quiet_start:
-        end += timedelta(days=1)
-
-    return end.astimezone(timezone.utc)
-
-
 async def _tick(bot) -> None:
     """Проверяет и отправляет все напоминания, срок которых наступил."""
     now = datetime.now(timezone.utc)
@@ -463,13 +439,10 @@ async def _tick(bot) -> None:
                 """
                 SELECT
                     r.*,
-                    u.chat_id,
-                    p.tz
+                    u.chat_id
                 FROM reminders AS r
                 JOIN users AS u
                     ON u.id = r.user_id
-                LEFT JOIN profiles AS p
-                    ON p.user_id = r.user_id
                 WHERE r.active = TRUE
                   AND r.next_at <= $1
                 ORDER BY r.next_at
@@ -481,62 +454,6 @@ async def _tick(bot) -> None:
             )
 
             for reminder in rows:
-                local_now = now.astimezone(tz_of(reminder["tz"]))
-
-                # Не отправляем сообщения в тихие часы.
-                if _is_quiet(local_now):
-                    await conn.execute(
-                        """
-                        UPDATE reminders
-                        SET next_at = $2
-                        WHERE id = $1
-                        """,
-                        reminder["id"],
-                        _quiet_end(local_now),
-                    )
-                    continue
-
-                # Ограничиваем количество уведомлений за локальные сутки.
-                day_start = local_now.replace(
-                    hour=0,
-                    minute=0,
-                    second=0,
-                    microsecond=0,
-                )
-
-                sent_today = await conn.fetchval(
-                    """
-                    SELECT count(*)
-                    FROM events
-                    WHERE user_id = $1
-                      AND type = 'reminder_sent'
-                      AND created_at >= $2
-                    """,
-                    reminder["user_id"],
-                    day_start.astimezone(timezone.utc),
-                )
-
-                if sent_today >= settings.max_reminders_per_day:
-                    tomorrow = (
-                        day_start + timedelta(days=1)
-                    ).replace(
-                        hour=settings.quiet_end,
-                        minute=0,
-                        second=0,
-                        microsecond=0,
-                    )
-
-                    await conn.execute(
-                        """
-                        UPDATE reminders
-                        SET next_at = $2
-                        WHERE id = $1
-                        """,
-                        reminder["id"],
-                        tomorrow.astimezone(timezone.utc),
-                    )
-                    continue
-
                 try:
                     await bot.send_message(
                         chat_id=reminder["chat_id"],
@@ -563,11 +480,20 @@ async def _tick(bot) -> None:
 
                 except Exception:
                     log.exception(
-                        "Не удалось отправить напоминание id=%s",
+                        "Не удалось отправить напоминание id=%s. "
+                        "Повторная попытка через 5 минут.",
                         reminder["id"],
                     )
-                    # Не меняем next_at: после ошибки попробуем снова
-                    # на следующем цикле планировщика.
+
+                    await conn.execute(
+                        """
+                        UPDATE reminders
+                        SET next_at = $2
+                        WHERE id = $1
+                        """,
+                        reminder["id"],
+                        now + timedelta(minutes=5),
+                    )
                     continue
 
                 await conn.execute(
@@ -630,7 +556,6 @@ async def _tick(bot) -> None:
                     )
 
                 else:
-                    # Разовое напоминание после успешной отправки отключается.
                     await conn.execute(
                         """
                         UPDATE reminders
@@ -639,6 +564,12 @@ async def _tick(bot) -> None:
                         """,
                         reminder["id"],
                     )
+
+                log.info(
+                    "Напоминание id=%s успешно отправлено пользователю %s",
+                    reminder["id"],
+                    reminder["user_id"],
+                )
 
 
 async def loop(bot) -> None:
