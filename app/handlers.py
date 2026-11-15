@@ -10,11 +10,9 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
-    WebAppInfo,
 )
 
 from . import db, dialog, reminders
-from .config import settings
 
 log = logging.getLogger(__name__)
 router = Router()
@@ -52,51 +50,17 @@ def _btn(text: str, data: str) -> dict:
 
 @router.message(CommandStart())
 async def cmd_start(m: Message):
-    log.warning("MINIAPP_URL USED BY BOT: %r", settings.miniapp_url)
-
     await db.upsert_user(m.from_user.id, m.chat.id)
 
-    rows = [
-        [_btn("Рассказать о бизнесе", "onb:start")],
-        [_btn("Пропустить", "onb:skip")],
-    ]
-
-    if settings.miniapp_url:
-        await m.answer(
-            "Привет! Я помощник «Альфа-Курса»: отвечаю на вопросы по бизнесу, "
-            "подбираю материалы и напоминаю о важных сроках.\n\n"
-            "Откройте учебный кабинет или задайте вопрос прямо здесь.",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="🚀 Открыть учебный кабинет",
-                            web_app=WebAppInfo(url=settings.miniapp_url),
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            text="Рассказать о бизнесе",
-                            callback_data="onb:start",
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            text="Пропустить",
-                            callback_data="onb:skip",
-                        )
-                    ],
-                ]
-            ),
-        )
-    else:
-        await m.answer(
-            "Привет! Я помощник «Альфа-Курса»: отвечаю на вопросы по бизнесу, "
-            "подбираю материалы и напоминаю о важных сроках.\n\n"
-            "Могу задать два коротких вопроса о вашем бизнесе, "
-            "чтобы подсказывать точнее. Это необязательно.",
-            reply_markup=markup(rows),
-        )
+    await m.answer(
+        "Привет! Я помощник «Альфа-Курса»: отвечаю на вопросы по бизнесу, "
+        "подбираю материалы и напоминаю о важных сроках.\n\n"
+        "Откройте учебный кабинет или задайте вопрос прямо здесь.",
+        reply_markup=markup([
+            [_btn("Рассказать о бизнесе", "onb:start")],
+            [_btn("Пропустить", "onb:skip")],
+        ]),
+    )
 
 
 @router.message(Command("help"))
