@@ -316,24 +316,41 @@ async def chat(
     if not message:
         raise HTTPException(422, "Введите сообщение")
 
-    answer, _buttons = await dialog.respond(
+    # Анализ запроса, поиск ответа и подбор материалов выполняются
+    # внутри dialog одним согласованным сценарием.
+    result = await dialog.respond_with_context(
         user["id"],
         message,
     )
 
-    profile = await db.get_profile(user["id"])
-    found = await search.materials(message)
-    materials = recs.rank(found, profile, top=3)
+    answer = result["answer"]
+    materials = result.get("materials", [])
+
+    lowered_answer = answer.lower()
+
+    no_answer = (
+        lowered_answer.startswith(
+            "в доступной базе знаний нет точной информации"
+        )
+        or lowered_answer.startswith(
+            "не нашёл в каталоге материалов"
+        )
+    )
 
     await db.log_event(
         user["id"],
         "miniapp_message",
-        {"length": len(message)},
+        {
+            "length": len(message),
+            "search_query": result.get("search_query", ""),
+            "materials_count": len(materials),
+            "no_answer": no_answer,
+        },
     )
 
     return {
         "answer": answer,
-        "no_answer": "не нашёл надёжного ответа" in answer.lower(),
+        "no_answer": no_answer,
         "materials": [
             {
                 "id": str(material["id"]),
@@ -390,17 +407,17 @@ async def get_materials(
 ):
     profile = await db.get_profile(user["id"])
 
-    found = (
-        await search.materials(query)
-        if query.strip()
-        else await recs.cold_start()
-    )
+    if query.strip():
+        found = await search.materials(query)
 
-    items = (
-        recs.rank(found, profile, top=10)
-        if query.strip()
-        else found[:10]
-    )
+        items = recs.rank(
+            found,
+            profile,
+            top=10,
+            query=query,
+        )
+    else:
+        items = (await recs.cold_start())[:10]
 
     await db.log_event(
         user["id"],

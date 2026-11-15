@@ -1,5 +1,7 @@
 
-"""Разбор сообщений пользователя: намерение, профиль, поиск и напоминания."""
+"""Понимание сообщений пользователя: намерение, профиль, поиск и напоминания."""
+
+from __future__ import annotations
 
 import json
 import re
@@ -16,13 +18,10 @@ REGIMES = {"usn", "npd", "osno", "patent", "other"}
 EXPERIENCE = {"novice", "some", "experienced"}
 REPEATS = {"none", "daily", "weekly", "monthly", "every_n_days"}
 
-# Фразы, которые сами по себе не являются темой для поиска.
 GENERIC_RECOMMEND_RE = re.compile(
-    r"^\s*(?:"
-    r"подбери|подберите|найди|найдите|порекомендуй|порекомендуйте"
-    r")\s+(?:мне\s+)?(?:"
-    r"материалы|курсы|обучение|инструкции|ресурсы"
-    r")\s*(?:под\s+(?:мою|эту|нашу)\s+задачу)?[.!?]*\s*$",
+    r"^\s*(?:подбери|подберите|найди|найдите|порекомендуй|порекомендуйте)"
+    r"\s+(?:мне\s+)?(?:материалы|курсы|обучение|инструкции|ресурсы)"
+    r"\s*(?:под\s+(?:мою|эту|нашу)\s+задачу)?[.!?]*\s*$",
     re.IGNORECASE,
 )
 
@@ -38,27 +37,47 @@ GENERIC_PHRASES = {
     "подбери под это",
     "подберите под это",
     "расскажи подробнее",
+    "расскажите подробнее",
     "помоги мне",
+    "помогите мне",
     "да",
     "нет",
+    "ага",
+    "ок",
+    "хорошо",
 }
 
+TYPO_REPLACEMENTS = {
+    "клиаентов": "клиентов",
+    "клиентв": "клиентов",
+    "предпренимателей": "предпринимателей",
+    "предприниматлей": "предпринимателей",
+    "предприниматль": "предприниматель",
+    "бизнесс": "бизнес",
+    "бизнeс": "бизнес",
+    "поставшиков": "поставщиков",
+    "поставщеков": "поставщиков",
+    "налогооблажение": "налогообложение",
+    "налогооблажения": "налогообложения",
+    "маркетенг": "маркетинг",
+    "продвиженее": "продвижение",
+}
 
 SYSTEM = """
-Ты — модуль понимания сообщений пользователя образовательной платформы
-«Альфа-Курс» для предпринимателей.
+Ты — модуль понимания сообщений пользователя платформы «Альфа-Курс»
+для предпринимателей.
 
-Твоя задача — понять смысл сообщения с учётом истории диалога и вернуть
-строго один JSON-объект без Markdown и пояснений.
+Верни строго один JSON-объект без Markdown и пояснений.
 
 Формат:
 {
   "intent": "question",
-  "search_query": "короткий поисковый запрос по существу",
+  "search_query": "конкретная тема для поиска",
   "clarify": null,
   "profile": {
     "stage": null,
     "area": null,
+    "business_type": null,
     "tax_regime": null,
     "experience": null,
     "goal": null
@@ -67,48 +86,43 @@ SYSTEM = """
 }
 
 Допустимые intent:
-- question — вопрос, на который нужно ответить;
-- recommend — просьба подобрать материалы, курс, инструкцию или план обучения;
+- question — вопрос о бизнесе;
+- recommend — пользователь просит подобрать материалы;
 - reminder — просьба создать напоминание;
 - profile — пользователь сообщает сведения о себе или бизнесе;
 - chitchat — приветствие или разговор не по теме.
 
-Правила понимания диалога:
-1. Всегда учитывай предыдущие сообщения.
-2. Если пользователь отвечает на уточняющий вопрос, объедини его ответ
-   с первоначальной задачей.
-3. Не воспринимай фразы «да», «нет», «для моего бизнеса», «подбери под это»
-   как самостоятельные поисковые запросы.
-4. Если пользователь просит подобрать материалы под свою задачу,
-   восстанови конкретную задачу из последних сообщений диалога.
-5. Если задачи в истории нет, используй основную цель пользователя из профиля.
-6. Если нет ни задачи в диалоге, ни цели в профиле — задай один конкретный
-   уточняющий вопрос.
-7. Не меняй намерение пользователя без причины.
-8. Не задавай повторно вопрос, на который пользователь уже ответил.
-9. Не придумывай сведения о пользователе.
+Правила определения намерения:
+1. Учитывай историю диалога.
+2. Если пользователь отвечает на уточняющий вопрос, учитывай предыдущую задачу.
+3. Короткие ответы «да», «нет», «ага», «хорошо» не являются самостоятельными поисковыми запросами.
+4. Просьба подобрать материалы означает recommend.
+5. Обычный вопрос о бизнесе означает question, даже если пользователь хочет открыть бизнес.
+6. Не путай вопрос «как открыть бизнес?» с просьбой подобрать курсы.
+7. Если пользователь сообщает сведения о своём бизнесе, сохрани их в profile.
+8. Не придумывай сведения о пользователе.
+9. Не классифицируй обычный вопрос о бизнесе как chitchat.
+10. Не задавай уточнение, если можно дать полезный общий ответ.
 
 Правила search_query:
-- Только конкретная тема или задача пользователя.
+- Короткая и конкретная тема.
 - Пиши по-русски.
-- Убирай местоимения и вводные фразы.
-- Не добавляй сферу бизнеса и цель из профиля, если они не относятся
-  к текущему вопросу.
-- Для продолжения диалога учитывай первоначальную задачу.
-- Не используй в качестве запроса фразы «помоги мне», «подбери материалы»,
-  «расскажи подробнее» без восстановления темы из истории.
+- Исправляй очевидные опечатки.
+- Убирай вводные слова и местоимения.
+- Не добавляй сведения из профиля, не относящиеся к вопросу.
+- Для «первые клиенты» используй тему привлечения первых клиентов.
+- Для «открыть цветочный бизнес» используй тему открытия цветочного бизнеса.
+- Для «ошибки предпринимателей» используй тему типичных ошибок начинающих предпринимателей.
+- Не возвращай общие фразы без восстановления темы из истории.
 
-Правила профиля:
-Записывай только сведения, которые пользователь явно сообщил
-в текущем сообщении.
-Если поле не упоминалось, возвращай null.
+Профиль:
+Записывай только то, что пользователь явно сообщил.
 Не перезаписывай известные сведения догадками.
 
-Допустимые значения:
 stage:
-- idea — только думает об открытии бизнеса;
+- idea — только планирует бизнес;
 - launch — запускает бизнес;
-- running — действующий бизнес;
+- running — бизнес уже работает;
 - growing — развивает или масштабирует бизнес.
 
 tax_regime:
@@ -123,14 +137,13 @@ experience:
 - some — есть некоторый опыт;
 - experienced — опытный.
 
-Правила уточнения:
-- clarify — null, если можно ответить.
-- Если без уточнения невозможно дать полезный ответ, задай один короткий
-  конкретный вопрос.
-- Если в истории уже задавался такой вопрос, не повторяй его автоматически.
+Уточнение:
+- clarify=null, если можно ответить.
+- Если без детали действительно невозможно ответить, задай один конкретный вопрос.
+- Не повторяй вопрос, на который пользователь уже ответил.
 
-Правила напоминаний:
-Если пользователь просит напомнить, intent должен быть reminder.
+Напоминания:
+Если пользователь просит напомнить, intent=reminder.
 
 Формат reminder:
 {
@@ -141,7 +154,7 @@ experience:
   "missing": null
 }
 
-Время рассчитывай относительно текущего времени пользователя.
+Время рассчитывай относительно указанного местного времени.
 Если время не указано, when=null, missing="Когда напомнить?".
 Не выдумывай дату и время.
 """
@@ -169,6 +182,34 @@ def _enum(value, allowed):
     return value if value in allowed else None
 
 
+def _normalize_text(value):
+    """Нормализует пробелы и исправляет известные опечатки."""
+    value = re.sub(r"\s+", " ", str(value or "").strip())
+    words = value.split()
+
+    corrected = []
+
+    for word in words:
+        match = re.match(r"^([^\w]*)(.*?)([^\w]*)$", word, re.UNICODE)
+
+        if not match:
+            corrected.append(word)
+            continue
+
+        prefix, core, suffix = match.groups()
+        replacement = TYPO_REPLACEMENTS.get(core.lower())
+
+        if replacement:
+            if core[:1].isupper():
+                replacement = replacement.capitalize()
+
+            corrected.append(prefix + replacement + suffix)
+        else:
+            corrected.append(word)
+
+    return " ".join(corrected)
+
+
 def _timezone(name):
     try:
         return ZoneInfo(name)
@@ -182,10 +223,12 @@ def _profile_update(data):
 
     area = _clean(data.get("area"))
     goal = _clean(data.get("goal"))
+    business_type = _clean(data.get("business_type"))
 
     return {
         "stage": _enum(data.get("stage"), STAGES),
         "area": area[:60] if area else None,
+        "business_type": business_type[:100] if business_type else None,
         "tax_regime": _enum(data.get("tax_regime"), REGIMES),
         "experience": _enum(data.get("experience"), EXPERIENCE),
         "goal": goal[:100] if goal else None,
@@ -197,6 +240,7 @@ def _reminder_data(data):
         return None
 
     repeat = data.get("repeat")
+
     if repeat not in REPEATS:
         repeat = "none"
 
@@ -204,6 +248,9 @@ def _reminder_data(data):
         n = int(data["n"]) if data.get("n") is not None else None
     except (TypeError, ValueError):
         n = None
+
+    if n is not None:
+        n = max(1, min(n, 365))
 
     text = _clean(data.get("text"))
     when = _clean(data.get("when"))
@@ -218,13 +265,17 @@ def _reminder_data(data):
     }
 
 
+def _is_short_reply(text):
+    normalized = re.sub(r"[.!?,;:]+$", "", text.strip().lower())
+    return normalized in GENERIC_PHRASES
+
+
 def _history_task(history, current_text):
     """Ищет последнюю конкретную задачу пользователя в истории."""
-
     if not isinstance(history, list):
         return None
 
-    current_normalized = current_text.strip().lower()
+    current_normalized = _normalize_text(current_text).lower()
 
     for item in reversed(history):
         if not isinstance(item, (tuple, list)) or len(item) < 2:
@@ -236,25 +287,25 @@ def _history_task(history, current_text):
             continue
 
         content = _clean(content)
+
         if not content:
             continue
 
-        normalized = content.lower()
+        normalized = _normalize_text(content).lower()
 
         if normalized == current_normalized:
             continue
 
-        if normalized in GENERIC_PHRASES:
+        if _is_short_reply(normalized):
             continue
 
         if GENERIC_RECOMMEND_RE.match(content):
             continue
 
-        # Не используем короткие ответы и приветствия как задачу.
         if len(content) < 12:
             continue
 
-        return content[:500]
+        return _normalize_text(content)[:500]
 
     return None
 
@@ -270,7 +321,6 @@ def _is_generic_recommendation(text):
 
 def _resolve_recommendation_query(text, profile, history):
     """Восстанавливает тему рекомендаций из диалога или профиля."""
-
     task = _history_task(history, text)
 
     if task:
@@ -287,12 +337,105 @@ def _resolve_recommendation_query(text, profile, history):
     )
 
 
+def _fallback_intent(text):
+    """Резервное определение намерения, если LLM не вернула JSON."""
+    value = _normalize_text(text).lower()
+
+    if re.search(
+        r"\b(напомни|напомните|поставь напоминание|создай напоминание)\b",
+        value,
+    ):
+        return "reminder"
+
+    if re.search(
+        r"\b(привет|здравствуй|добрый день|доброе утро|добрый вечер)\b",
+        value,
+    ):
+        return "chitchat"
+
+    if _is_generic_recommendation(value):
+        return "recommend"
+
+    if re.search(
+        r"\b(подбери|подберите|порекомендуй|порекомендуйте|"
+        r"найди материалы|найдите материалы)\b",
+        value,
+    ):
+        return "recommend"
+
+    return "question"
+
+
+def _fallback_query(text):
+    """Создаёт поисковую тему без зависимости от ответа LLM."""
+    value = _normalize_text(text)
+    lower = value.lower()
+
+    replacements = (
+        (r"^(?:я хочу|хочу|планирую|собираюсь)\s+", ""),
+        (
+            r"^(?:подскажи|подскажите|расскажи|расскажите|"
+            r"объясни|объясните|помоги|помогите|можешь рассказать)\s+",
+            "",
+        ),
+        (r"^(?:мне нужно|мне бы хотелось)\s+", ""),
+    )
+
+    for pattern, replacement in replacements:
+        value = re.sub(pattern, replacement, value, flags=re.IGNORECASE)
+
+    value = re.sub(r"\s+", " ", value).strip(" .,!?:;")
+
+    special = (
+        (r"\bпервые клиенты\b", "привлечение первых клиентов"),
+        (r"\bцветочн\w*\s+бизнес\b", "открытие цветочного бизнеса"),
+        (
+            r"\bошибк\w*\s+начинающ\w*\s+предпринимател\w*\b",
+            "типичные ошибки начинающих предпринимателей",
+        ),
+        (
+            r"\bошибк\w*\s+предпринимател\w*\b",
+            "типичные ошибки предпринимателей",
+        ),
+        (
+            r"\bнадёжн\w*\s+поставщик\w*\b",
+            "поиск надёжных поставщиков",
+        ),
+        (
+            r"\bнадежн\w*\s+поставщик\w*\b",
+            "поиск надёжных поставщиков",
+        ),
+    )
+
+    for pattern, replacement in special:
+        if re.search(pattern, lower):
+            return replacement
+
+    return value or _normalize_text(text)
+
+
+def _normalize_search_query(value, fallback):
+    """Отсекает пустые и общие поисковые формулировки."""
+    query = _clean(value)
+
+    if not query:
+        return fallback
+
+    query = _normalize_text(query).strip(" .,!?:;")
+
+    if len(query) < 3 or _is_generic_recommendation(query):
+        return fallback
+
+    return query[:500]
+
+
 async def run(
     text: str,
     profile: dict,
     history: list[tuple[str, str]] | None = None,
 ) -> dict:
     """Анализирует сообщение и возвращает нормализованную структуру."""
+    text = _normalize_text(text)
 
     history = history or []
     profile = profile or {}
@@ -303,7 +446,14 @@ async def run(
 
     known = {
         key: profile.get(key)
-        for key in ("stage", "area", "tax_regime", "experience", "goal")
+        for key in (
+            "stage",
+            "area",
+            "business_type",
+            "tax_regime",
+            "experience",
+            "goal",
+        )
         if profile.get(key)
     }
 
@@ -324,7 +474,7 @@ async def run(
             history=history[-6:],
             json_mode=True,
             temperature=0,
-            max_tokens=600,
+            max_tokens=700,
         )
         data = llm.parse_json(raw)
     except Exception:
@@ -334,17 +484,31 @@ async def run(
         data = {}
 
     intent = data.get("intent")
-    if intent not in INTENTS:
-        intent = "question"
 
-    # Явная просьба о подборе материалов имеет приоритет
-    # над случайной классификацией модели.
+    if intent not in INTENTS:
+        intent = _fallback_intent(text)
+
+    # Явная просьба подобрать материалы имеет приоритет над ответом LLM.
     if _is_generic_recommendation(text):
         intent = "recommend"
+    elif re.search(
+        r"\b(подбери|подберите|порекомендуй|порекомендуйте)\s+"
+        r"(?:мне\s+)?(?:материалы|курсы|обучение|инструкции)\b",
+        text.lower(),
+    ):
+        intent = "recommend"
+
+    # Не превращаем короткий ответ в самостоятельный поисковый запрос.
+    if _is_short_reply(text) and intent in {"question", "recommend"}:
+        previous_task = _history_task(history, text)
+
+        if previous_task:
+            intent = "recommend" if data.get("intent") == "recommend" else "question"
 
     profile_update = _profile_update(data.get("profile"))
 
     reminder = None
+
     if intent == "reminder":
         reminder = _reminder_data(data.get("reminder"))
 
@@ -361,13 +525,24 @@ async def run(
         if context_clarify:
             clarify = context_clarify
 
-    elif not search_query:
-        search_query = text.strip()
+    elif intent in {"question", "recommend"}:
+        fallback = _fallback_query(text)
 
-    # Не отправляем общие фразы в поисковый индекс.
-    if intent == "recommend" and search_query:
-        if _is_generic_recommendation(search_query):
-            search_query = None
+        if _is_short_reply(text):
+            fallback = _history_task(history, text)
+
+        search_query = _normalize_search_query(search_query, fallback)
+
+    else:
+        search_query = None
+
+    # Понятный вопрос не должен блокироваться случайным уточнением LLM.
+    if intent == "question" and search_query and len(search_query) >= 5:
+        clarify = None
+
+    # Если тема не определена, пробуем восстановить её из истории.
+    if not search_query and intent in {"question", "recommend"}:
+        search_query = _history_task(history, text)
 
     return {
         "intent": intent,

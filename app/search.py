@@ -1,4 +1,6 @@
 
+"""Поиск фрагментов базы знаний и материалов каталога."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -7,7 +9,7 @@ from . import db
 
 
 def _raw_score(value: Any) -> float:
-    """Возвращает исходную оценку PostgreSQL без искусственного усиления."""
+    """Безопасно преобразует оценку поиска в число."""
     try:
         score = float(value or 0.0)
     except (TypeError, ValueError):
@@ -21,11 +23,12 @@ def _raw_score(value: Any) -> float:
 
 async def kb(query: str, limit: int = 6) -> list[dict]:
     """
-    Ищет фрагменты базы знаний для ответа на вопрос.
+    Ищет фрагменты базы знаний.
 
-    score и raw_score содержат исходную оценку PostgreSQL.
+    Не изменяет исходную оценку PostgreSQL.
     """
     query = (query or "").strip()
+
     if not query:
         return []
 
@@ -51,24 +54,38 @@ async def kb(query: str, limit: int = 6) -> list[dict]:
 
     for row in rows:
         item = dict(row)
-        raw = _raw_score(item.get("score"))
+        score = _raw_score(item.get("score"))
 
-        item["raw_score"] = raw
-        item["score"] = raw
+        item["raw_score"] = score
+        item["score"] = score
 
         results.append(item)
+
+    results.sort(
+        key=lambda item: item["score"],
+        reverse=True,
+    )
 
     return results
 
 
-async def materials(query: str, limit: int = 10) -> list[dict]:
+async def materials(
+    query: str,
+    limit: int = 10,
+) -> list[dict]:
     """
-    Ищет материалы, которые разрешено рекомендовать пользователю.
+    Ищет материалы, разрешённые для рекомендаций.
 
-    Не усиливает исходную оценку поиска.
-    Платные материалы не получают ссылку на бесплатный просмотр.
+    Правила:
+    - закрытые материалы не выдаются;
+    - материалы без разрешения на рекомендацию не выдаются;
+    - бесплатные материалы должны иметь подтверждённую ссылку;
+    - платные материалы получают ссылку на покупку, а не бесплатный URL;
+    - исходная оценка поиска не усиливается.
     """
+
     query = (query or "").strip()
+
     if not query:
         return []
 
@@ -94,7 +111,10 @@ async def materials(query: str, limit: int = 10) -> list[dict]:
             m.kind AS format,
             NULL::text AS level,
 
-            (m.access IN ('paid', 'subscription')) AS is_paid,
+            (
+                m.access IN ('paid', 'subscription')
+            ) AS is_paid,
+
             m.access,
 
             CASE
@@ -120,10 +140,15 @@ async def materials(query: str, limit: int = 10) -> list[dict]:
                 ELSE NULL
             END AS url,
 
+            (
+                m.url_confirmed IS TRUE
+            ) AS url_confirmed,
+
             s.buy_url,
             s.score AS raw_score
 
         FROM kb.search($1, $2) AS s
+
         JOIN kb.materials AS m
             ON m.id = s.material_id
 
@@ -131,11 +156,22 @@ async def materials(query: str, limit: int = 10) -> list[dict]:
             m.is_recommendable IS TRUE
             AND m.is_closed IS NOT TRUE
             AND (
-                m.access IN ('paid', 'subscription')
-                OR m.url_confirmed IS TRUE
+                (
+                    m.access IN ('paid', 'subscription')
+                    AND s.buy_url IS NOT NULL
+                    AND s.buy_url <> ''
+                )
+                OR
+                (
+                    m.access NOT IN ('paid', 'subscription')
+                    AND m.url_confirmed IS TRUE
+                    AND s.url IS NOT NULL
+                    AND s.url <> ''
+                )
             )
 
         ORDER BY s.score DESC
+
         LIMIT $2
         """,
         query[:500],
@@ -146,14 +182,19 @@ async def materials(query: str, limit: int = 10) -> list[dict]:
 
     for row in rows:
         item = dict(row)
-        raw = _raw_score(item.get("raw_score"))
 
-        # Пока сохраняем оба значения:
-        # score — для совместимости с текущим recs.py;
-        # raw_score — для нового ранжирования без искажения.
-        item["raw_score"] = raw
-        item["score"] = raw
+        score = _raw_score(
+            item.get("raw_score")
+        )
+
+        item["raw_score"] = score
+        item["score"] = score
 
         results.append(item)
+
+    results.sort(
+        key=lambda item: item["score"],
+        reverse=True,
+    )
 
     return results
