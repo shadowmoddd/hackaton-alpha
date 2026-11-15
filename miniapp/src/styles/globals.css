@@ -2518,3 +2518,246 @@ p { line-height: 1.65; }
     margin-top: 4px;
   }
 }
+
+/* =========================================================
+   MOBILE RESPONSIVE FIX — АЛЬФА-КУРС
+   Десктопные стили не меняются.
+   ========================================================= */
+
+@media (max-width: 700px) {
+  /* Общая ширина и отступы */
+  .main-content {
+    width: calc(100% - 32px);
+    max-width: 560px;
+    padding: 24px 0 36px;
+    margin-inline: auto;
+  }
+
+  /* Главная: текст и маскот */
+  .home-hero {
+    min-height: 350px;
+    padding: 24px 20px 175px;
+    border-radius: 20px;
+  }
+
+  .home-hero-label {
+    max-width: 100%;
+    font-size: 9px;
+    line-height: 1.5;
+  }
+
+  .home-hero h2 {
+    max-width: 100%;
+    font-size: 24px;
+    line-height: 1.2;
+    overflow-wrap: break-word;
+  }
+
+  .home-hero p {
+    max-width: 100%;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .home-hero-mascot {
+    right: 10px;
+    bottom: 0;
+    width: 165px;
+    height: 165px;
+    max-width: 55%;
+    object-fit: contain;
+    object-position: center bottom;
+    transform: none;
+  }
+
+  /* База знаний: освобождаем место для текста */
+  .material-feature {
+    position: relative;
+    display: block;
+    width: 100%;
+    min-height: 0;
+    padding: 20px 19px 155px;
+    margin-bottom: 18px;
+    overflow: hidden;
+    border-radius: 19px;
+  }
+
+  .material-feature > div:not(.feature-icon) {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .material-feature .feature-icon {
+    width: 42px;
+    height: 42px;
+    margin-bottom: 13px;
+  }
+
+  .material-feature .feature-label {
+    display: block;
+    font-size: 9px;
+    line-height: 1.5;
+  }
+
+  .material-feature h2 {
+    max-width: none;
+    margin: 8px 0 10px;
+    font-size: 22px;
+    line-height: 1.25;
+    overflow-wrap: break-word;
+  }
+
+  .material-feature p {
+    max-width: none;
+    margin-bottom: 13px;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+
+  .material-feature .text-action {
+    position: relative;
+    z-index: 3;
+    font-size: 12px;
+  }
+
+  .material-feature-mascot {
+    position: absolute;
+    z-index: 1;
+    right: 8px;
+    bottom: 0;
+    width: 138px;
+    height: 140px;
+    max-width: 46%;
+    object-fit: contain;
+    object-position: center bottom;
+    pointer-events: none;
+  }
+
+  /* Мой бизнес: поля идут строго друг за другом */
+  .business-form-layout {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .business-form-layout .form-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-flow: row;
+    gap: 17px;
+    width: 100%;
+    min-width: 0;
+    padding: 18px;
+  }
+
+  .business-form-layout .form-card > label {
+    grid-column: 1;
+    grid-row: auto;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .business-form-layout .form-card .primary-action {
+    grid-column: 1;
+    grid-row: auto;
+    width: 100%;
+    min-height: 49px;
+    justify-self: stretch;
+    margin: 3px 0 0;
+  }
+
+  .business-form-mascot {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: end;
+    align-self: center;
+    width: 112px;
+    max-width: 112px;
+    height: 105px;
+    margin: -5px 0 0;
+    object-fit: contain;
+    object-position: center;
+  }
+
+  /* Прогресс профиля */
+  .profile-progress {
+    gap: 10px;
+    padding: 15px;
+    margin-bottom: 17px;
+  }
+
+  .profile-progress b {
+    font-size: 12px;
+  }
+
+  .profile-progress span {
+    font-size: 10px;
+    line-height: 1.4;
+  }
+
+  /* Нижняя навигация */
+  .bottom-nav {
+    display: flex;
+    justify-content: space-between;
+    gap: 2px;
+    padding: 7px 4px calc(7px + env(safe-area-inset-bottom));
+  }
+
+  .bottom-nav button {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: none;
+    min-height: 55px;
+    padding: 4px 1px;
+    gap: 4px;
+  }
+
+  .bottom-nav button svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .bottom-nav button span {
+    font-size: 8px;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+}
+
+/* Очень узкие телефоны */
+@media (max-width: 380px) {
+  .main-content {
+    width: calc(100% - 24px);
+  }
+
+  .home-hero {
+    padding-inline: 17px;
+  }
+
+  .home-hero h2 {
+    font-size: 22px;
+  }
+
+  .material-feature {
+    padding: 17px 16px 145px;
+  }
+
+  .material-feature h2 {
+    font-size: 20px;
+  }
+
+  .material-feature-mascot {
+    width: 125px;
+    height: 128px;
+  }
+
+  .business-form-layout .form-card {
+    padding: 15px;
+  }
+
+  .bottom-nav button span {
+    font-size: 7px;
+  }
+}
