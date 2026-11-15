@@ -2421,3 +2421,100 @@ p { line-height: 1.65; }
   .bottom-nav button span { font-size: 9px; }
   .home-hero-mascot { bottom: 0; transform: translateY(-7px); }
 }
+
+
+/* Mascot placements requested: preserve all existing app behavior and styling. */
+.material-feature {
+  position: relative;
+  display: block;
+  min-height: 260px;
+  padding: 30px 245px 30px 32px;
+  overflow: hidden;
+}
+.material-feature > div:not(.feature-icon) {
+  position: relative;
+  z-index: 1;
+  max-width: 700px;
+}
+.material-feature-mascot {
+  position: absolute;
+  z-index: 0;
+  right: 12px;
+  bottom: 0;
+  width: 225px;
+  height: 245px;
+  object-fit: contain;
+  object-position: center bottom;
+  pointer-events: none;
+  filter: drop-shadow(0 10px 14px rgba(36, 22, 50, .10));
+}
+.business-form-layout {
+  display: block;
+  min-width: 0;
+}
+
+.business-form-layout .form-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 235px);
+  align-items: center;
+  min-width: 0;
+  padding-bottom: 28px;
+}
+
+.business-form-layout .form-card .primary-action {
+  grid-column: 1;
+  grid-row: 5;
+  align-self: center;
+  margin: 0;
+  justify-self: start;
+}
+
+.business-form-mascot {
+  grid-column: 2;
+  grid-row: 5;
+  display: block;
+  width: 100%;
+  max-width: 220px;
+  height: 180px;
+  justify-self: center;
+  align-self: center;
+  object-fit: contain;
+  object-position: center;
+  pointer-events: none;
+  filter: drop-shadow(0 12px 18px rgba(36, 22, 50, .10));
+}
+
+@media (max-width: 900px) {
+  .business-form-layout .form-card {
+    grid-template-columns: minmax(0, 1fr) 180px;
+  }
+
+  .business-form-mascot {
+    max-width: 175px;
+    height: 155px;
+  }
+}
+
+@media (max-width: 700px) {
+  .business-form-layout .form-card {
+    grid-template-columns: minmax(0, 1fr);
+    padding-bottom: 19px;
+  }
+
+  .business-form-layout .form-card .primary-action {
+    grid-column: 1;
+    grid-row: 5;
+    width: 100%;
+    justify-self: stretch;
+  }
+
+  .business-form-mascot {
+    grid-column: 1;
+    grid-row: 6;
+    width: 145px;
+    max-width: 145px;
+    height: 135px;
+    justify-self: end;
+    margin-top: 4px;
+  }
+}

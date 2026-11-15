@@ -10,6 +10,8 @@ import agentMark from '@/assets/agent-symbol.png'
 import agentWordmark from '@/assets/agent-wordmark.png'
 import agentMainCharacter from '@/assets/agent-main-character.png'
 import agentNotifications from '@/assets/agent-notifications.png'
+import agentBook from '@/assets/agent-book.png'
+import agentBusinessArrow from '@/assets/agent-business-arrow.png'
 import {
   api, ApiProfile, ApiReminder, ApiMaterial, isTelegramWebApp
 } from '@/shared/api'
@@ -967,6 +969,11 @@ export default function App() {
                   Подобрать материалы <ChevronRight size={16} />
                 </button>
               </div>
+              <img
+                className="material-feature-mascot"
+                src={agentBook}
+                alt="Маскот с книгой и кружкой"
+              />
             </div>
 
             {materials.length === 0 ? (
@@ -1024,6 +1031,7 @@ export default function App() {
               </span>
             </div>
 
+            <div className="business-form-layout">
             <div className="form-card">
               <label>
                 Тип бизнеса
@@ -1106,6 +1114,12 @@ export default function App() {
               <button className="primary-action" onClick={() => void saveProfile()}>
                 <Check size={18} /> Сохранить профиль
               </button>
+              <img
+                className="business-form-mascot"
+                src={agentBusinessArrow}
+                alt="Маскот указывает на поля профиля бизнеса"
+              />
+            </div>
             </div>
 
             <button className="chat-link" onClick={() => setTab('chat')}>
