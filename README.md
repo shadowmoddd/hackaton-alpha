@@ -137,6 +137,7 @@ PostgreSQL: профили, история, события, напоминани
 LLM_BASE_URL=https://api.groq.com/openai/v1
 LLM_API_KEY=YOUR_GROQ_API_KEY
 LLM_MODEL=openai/gpt-oss-120b
+MINIAPP_URL=https://skilly-miniapp-new.vercel.app
 ~~~
 
 Ключ не хранится в исходном коде: приложение читает его из переменной окружения при запуске. Для эмбеддингов предусмотрены EMBED_MODEL, EMBED_BASE_URL и EMBED_API_KEY; они необязательны, если отдельная модель эмбеддингов не используется.
