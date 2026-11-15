@@ -127,7 +127,7 @@ PostgreSQL: профили, история, события, напоминани
 
 - Сервис: Groq.
 - Базовый URL: https://api.groq.com/openai/v1.
-- Модель задаётся через LLM_MODEL; значение шаблона .env.example: llama-3.3-70b-versatile.
+- Модель задаётся через LLM_MODEL; значение шаблона .env.example: openai/gpt-oss-120b.
 - Ключ API передаётся через переменную окружения LLM_API_KEY.
 - Адрес API задаётся через LLM_BASE_URL.
 
@@ -136,7 +136,7 @@ PostgreSQL: профили, история, события, напоминани
 ~~~env
 LLM_BASE_URL=https://api.groq.com/openai/v1
 LLM_API_KEY=YOUR_GROQ_API_KEY
-LLM_MODEL=llama-3.3-70b-versatile
+LLM_MODEL=openai/gpt-oss-120b
 ~~~
 
 Ключ не хранится в исходном коде: приложение читает его из переменной окружения при запуске. Для эмбеддингов предусмотрены EMBED_MODEL, EMBED_BASE_URL и EMBED_API_KEY; они необязательны, если отдельная модель эмбеддингов не используется.
