@@ -134,10 +134,28 @@ PostgreSQL: профили, история, события, напоминани
 Пример локальной конфигурации:
 
 ~~~env
+TELEGRAM_TOKEN=YOUR_TELEGRAM_BOT_TOKEN
 LLM_BASE_URL=https://api.groq.com/openai/v1
 LLM_API_KEY=YOUR_GROQ_API_KEY
 LLM_MODEL=openai/gpt-oss-120b
+POSTGRES_USER=alfa
+POSTGRES_PASSWORD=CHANGE_ME_TO_A_LONG_RANDOM_PASSWORD
+POSTGRES_DB=alfa
 MINIAPP_URL=https://skilly-miniapp-new.vercel.app
+MINIAPP_ORIGINS=https://skilly-miniapp-new.vercel.app
+PLATFORM_URL=https://kurs.alfabank.ru/
+UTM_SUFFIX=
+DEFAULT_TZ=Europe/Moscow
+QUIET_START=21
+QUIET_END=9
+MAX_REMINDERS_PER_USER=8
+MAX_REMINDERS_PER_DAY=3
+KB_MIN_SCORE=0.005
+MAT_MIN_SCORE=0.005
+EMBED_MODEL=
+EMBED_DIM=1536
+EMBED_BASE_URL=
+EMBED_API_KEY=
 ~~~
 
 Ключ не хранится в исходном коде: приложение читает его из переменной окружения при запуске. Для эмбеддингов предусмотрены EMBED_MODEL, EMBED_BASE_URL и EMBED_API_KEY; они необязательны, если отдельная модель эмбеддингов не используется.
@@ -216,7 +234,7 @@ cp .env.example .env
 
 Бот получает обновления через long polling. При запуске через сервис api polling и фоновый цикл напоминаний запускаются внутри FastAPI lifecycle. Не запускайте одновременно api и bot с одним токеном.
 
-**Не публикуйте .env, токен Telegram, API-ключи и пароли.** В репозитории должен находиться только .env.example без рабочих секретов.
+**Важно:** присланные в переписке Telegram Bot Token, Groq API Key и пароль PostgreSQL следует считать скомпрометированными: немедленно отзовите/перевыпустите токен бота и API-ключ, смените пароль БД. Рабочие секреты не добавляются в Git. В репозитории находятся только безопасные заглушки в .env.example; реальные значения храните исключительно в локальном .env и секретах хостинга.
 
 ## 7. Запуск через Docker одной командой
 
